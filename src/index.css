@@ -1,0 +1,31 @@
+html, body { margin: 0; height: 100%; }
+body {
+  background: #15161A;
+  background-image: radial-gradient(circle at 50% 38%, #1d1f24 0%, #121316 70%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 100vh;
+  font-family: 'Saira', system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+#stage { transform-origin: center center; }
+button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+.apex-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+.apex-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+
+@keyframes apexBlink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+@keyframes apexScreenIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+@keyframes apexDetailIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+@keyframes apexCueIn { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
+@keyframes apexWave { 0%,100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
+.apex-wave { transform-origin: center; animation: apexWave 0.9s ease-in-out infinite; }
+@keyframes apexPing { 0% { transform: scale(0.6); opacity: 0.9; } 100% { transform: scale(2.6); opacity: 0; } }
+.apex-ping { animation: apexPing 1.8s cubic-bezier(0,0,0.2,1) infinite; }
+.apex-ping2 { animation-delay: 0.9s; }
+@keyframes apexRadiate {
+  0% { box-shadow: 0 0 0 0 rgba(255,107,26,0.5); }
+  70% { box-shadow: 0 0 0 26px rgba(255,107,26,0); }
+  100% { box-shadow: 0 0 0 0 rgba(255,107,26,0); }
+}
+.apex-radiate { animation: apexRadiate 1.4s ease-out infinite; }
