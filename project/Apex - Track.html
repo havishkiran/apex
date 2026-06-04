@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Apex</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Saira:wght@400;500;600;700&family=Saira+Condensed:wght@500;600;700&family=Oswald:wght@500;600;700&family=Barlow+Condensed:wght@500;600;700&display=swap" rel="stylesheet" />
+<style>
+  html, body { margin: 0; height: 100%; }
+  body {
+    background: #15161A;
+    background-image: radial-gradient(circle at 50% 38%, #1d1f24 0%, #121316 70%);
+    display: flex; align-items: center; justify-content: center;
+    min-height: 100vh; font-family: 'Saira', system-ui, sans-serif;
+    -webkit-font-smoothing: antialiased;
+  }
+  #stage { transform-origin: center center; }
+  button { font-family: inherit; -webkit-tap-highlight-color: transparent; }
+  .apex-scroll::-webkit-scrollbar { width: 0; height: 0; display: none; }
+  .apex-scroll { -ms-overflow-style: none; scrollbar-width: none; }
+  @keyframes apexBlink { 0%,100%{opacity:1} 50%{opacity:0.25} }
+  @keyframes apexScreenIn { from { opacity: 0; transform: translateY(8px); } to { opacity: 1; transform: none; } }
+  @keyframes apexDetailIn { from { opacity: 0; transform: translateX(24px); } to { opacity: 1; transform: none; } }
+  @keyframes apexCueIn { from { opacity: 0; transform: translateY(10px) scale(0.96); } to { opacity: 1; transform: none; } }
+  @keyframes apexWave { 0%,100% { transform: scaleY(0.5); } 50% { transform: scaleY(1); } }
+  .apex-wave { transform-origin: center; animation: apexWave 0.9s ease-in-out infinite; }
+</style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" integrity="sha384-hD6/rw4ppMLGNu3tX5cjIb+uRZ7UkRJ6BPkLpg4hAu/6onKUg4lLsHAs9EBPT82L" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" integrity="sha384-u6aeetuaXnQ38mYT8rp6sbXaQe3NL9t+IBXmnYxwkUI2Hw4bsp2Wvmx4yRQF1uAm" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" integrity="sha384-m08KidiNqLdpJqLq95G/LEi8Qvjl/xUYll3QILypMoQ65QorJ9Lvtp2RXYGBFj1y" crossorigin="anonymous"></script>
+
+  <script type="text/babel" src="ios-frame.jsx"></script>
+  <script type="text/babel" src="tweaks-panel.jsx"></script>
+  <script type="text/babel" src="apex-shared.jsx"></script>
+  <script type="text/babel" src="apex-logo.jsx"></script>
+  <script type="text/babel" src="apex-map.jsx"></script>
+  <script type="text/babel" src="apex-track.jsx"></script>
+  <script type="text/babel" src="apex-safety.jsx"></script>
+  <script type="text/babel" src="apex-nav.jsx"></script>
+  <script type="text/babel" src="apex-history.jsx"></script>
+  <script type="text/babel" src="apex-garage.jsx"></script>
+  <script type="text/babel" src="apex-devices.jsx"></script>
+  <script type="text/babel" src="apex-settings.jsx"></script>
+  <script src="image-slot.js"></script>
+
+  <script type="text/babel">
+    const { useState, useEffect, useRef } = React;
+
+    const FONT_MAP = {
+      'Saira Condensed': "'Saira Condensed'",
+      'Oswald': "'Oswald'",
+      'Barlow Condensed': "'Barlow Condensed'",
+    };
+
+    const TWEAK_DEFAULTS = /*EDITMODE-BEGIN*/{
+      "mode": "idle",
+      "hero": "speed",
+      "units": "km",
+      "gps": "phone",
+      "accent": "#FF6B1A",
+      "display": "Saira Condensed",
+      "safety": true,
+      "lockSpeed": 35,
+      "voiceCues": true,
+      "crashDetect": true,
+      "follow": false,
+      "route": "Stunt Rd Loop"
+    }/*EDITMODE-END*/;
+
+    const SEED = { speed: 67, dist: 24.6, elapsed: 2538, avg: 31, lean: 0 };
+    const ZERO = { speed: 0, dist: 0, elapsed: 0, avg: 0, lean: 0 };
+
+    function fmtCueTime(s) {
+      const m = Math.floor(s / 60);
+      return m >= 60 ? `${Math.floor(m / 60)} hr ${m % 60} min` : `${m} min`;
+    }
+
+    function App() {
+      const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
+      const recording = t.mode === 'recording';
+      const [st, setSt] = useState(recording ? SEED : ZERO);
+      const stRef = useRef(st);
+      stRef.current = st;
+
+      // navigation
+      const [screen, setScreen] = useState('track');
+      const [detail, setDetail] = useState(null); // a ride object when ride-detail is open
+      const navigate = (id) => { setDetail(null); setScreen(id); };
+
+      // crash-detection overlay + a counter used to (re)trigger the demo
+      const [crash, setCrash] = useState(false);
+      const [crashKey, setCrashKey] = useState(0);
+      const triggerCrash = () => { setCrashKey((k) => k + 1); setCrash(true); };
+
+      // voice/haptic cue: a spoken stat callout surfaces periodically while riding
+      const [cue, setCue] = useState('');
+      const cueOn = t.voiceCues !== false;
+
+      // follow-route (navigation) state
+      const following = t.follow === true;
+      const routeName = (window.APEX_ROUTES && window.APEX_ROUTES[t.route]) ? t.route : 'Stunt Rd Loop';
+      const [nav, setNav] = useState(null);
+      const navRef = useRef(nav); navRef.current = nav;
+      const exitRoute = () => setTweak('follow', false);
+
+      // ride simulation — live speed walk + accumulating distance/time
+      useEffect(() => {
+        if (!recording) { setSt(ZERO); return; }
+        // seed a populated mid-ride if starting fresh
+        setSt((s) => (s.elapsed === 0 ? SEED : s));
+        const id = setInterval(() => {
+          const s = stRef.current;
+          // smooth-ish random walk, 16–82 mph
+          let sp = s.speed + (Math.random() - 0.5) * 9;
+          sp = Math.max(16, Math.min(82, sp));
+          const elapsed = s.elapsed + 1;
+          const dist = s.dist + sp / 3600;
+          const avg = dist / (elapsed / 3600);
+          // lean swings with cornering; deeper at speed, signed L/R
+          const target = (Math.random() - 0.5) * 2 * Math.min(52, 14 + sp * 0.5);
+          const lean = (s.lean || 0) + (target - (s.lean || 0)) * 0.45;
+          setSt({ speed: sp, dist, elapsed, avg, lean });
+        }, 1000);
+        return () => clearInterval(id);
+      }, [recording]);
+
+      // (re)initialise the route when following turns on or the route changes
+      useEffect(() => {
+        if (!following) { setNav(null); return; }
+        const r = window.APEX_ROUTES[routeName];
+        const base = 9 * 60 + 41 + r.etaMin;
+        const eta = `${Math.floor(base / 60) % 24}:${String(base % 60).padStart(2, '0')}`;
+        setNav({ stepIndex: 0, distToTurn: r.steps[0].in, remaining: r.remaining, eta,
+          step: r.steps[0], next: r.steps[1] || null, dest: r.dest });
+      }, [following, routeName]);
+
+      // advance the route while moving — count down to the next maneuver
+      useEffect(() => {
+        if (!following || !recording) return;
+        const r = window.APEX_ROUTES[routeName];
+        const id = setInterval(() => {
+          const n = navRef.current; if (!n) return;
+          const s = stRef.current;
+          const dPerSec = Math.max(s.speed, 6) / 3600; // miles this second
+          let distToTurn = n.distToTurn - dPerSec;
+          const remaining = Math.max(0, n.remaining - dPerSec);
+          let stepIndex = n.stepIndex;
+          if (distToTurn <= 0) {
+            if (stepIndex < r.steps.length - 1) { stepIndex += 1; distToTurn = r.steps[stepIndex].in; }
+            else { distToTurn = 0; }
+          }
+          setNav({ ...n, stepIndex, distToTurn, remaining,
+            step: r.steps[stepIndex], next: r.steps[stepIndex + 1] || null });
+        }, 1000);
+        return () => clearInterval(id);
+      }, [following, recording, routeName]);
+
+      // emit a spoken cue every ~9s while recording (and not crashed).
+      // while following a route, cues become turn-by-turn instructions.
+      useEffect(() => {
+        if (!recording || !cueOn || crash) { setCue(''); return; }
+        const km = t.units === 'km';
+        const speak = () => {
+          const s = stRef.current;
+          const n = navRef.current;
+          if (following && n) {
+            if (n.step.dir === 'arrive') { setCue(`Arriving at ${n.dest}`); }
+            else {
+              const d = window.fmtNavDist(n.distToTurn, t.units);
+              setCue(`In ${d.value} ${d.unit}, ${window.maneuverVerb(n.step.dir).toLowerCase()} ${n.step.street}`);
+            }
+            setTimeout(() => setCue(''), 3600);
+            return;
+          }
+          const d = (km ? s.dist * 1.60934 : s.dist).toFixed(1);
+          const a = Math.round(km ? s.avg * 1.60934 : s.avg);
+          const u = km ? 'km' : 'mi';
+          const msgs = [
+            `${d} ${u} · avg ${a} ${km ? 'km/h' : 'mph'}`,
+            `${fmtCueTime(s.elapsed)} elapsed`,
+            `Lean ${Math.round(Math.abs(s.lean || 0))}° — nice line`,
+            `Halfway point · ${d} ${u} in`,
+          ];
+          setCue(msgs[Math.floor(Math.random() * msgs.length)]);
+          setTimeout(() => setCue(''), 3600);
+        };
+        const first = setTimeout(speak, 2500);
+        const id = setInterval(speak, 9000);
+        return () => { clearTimeout(first); clearInterval(id); setCue(''); };
+      }, [recording, cueOn, crash, t.units, following]);
+
+      const toggle = () => setTweak('mode', recording ? 'idle' : 'recording');
+
+      // scale device to fit viewport
+      const stageRef = useRef(null);
+      useEffect(() => {
+        const fit = () => {
+          const el = stageRef.current; if (!el) return;
+          const s = Math.min(window.innerWidth / 402, window.innerHeight / 874, 1);
+          el.style.transform = `scale(${s})`;
+        };
+        fit(); window.addEventListener('resize', fit);
+        return () => window.removeEventListener('resize', fit);
+      }, []);
+
+      const numFont = FONT_MAP[t.display] || FONT_MAP['Saira Condensed'];
+
+      // route the active screen (Track is bespoke; others share the Screen scaffold)
+      let view;
+      if (detail) {
+        view = <div key="detail" style={{ position: 'absolute', inset: 0 }}>
+          <ApexRideDetail ride={detail} t={t} onBack={() => setDetail(null)} />
+        </div>;
+      } else if (screen === 'track') {
+        view = <ApexTrack key="track" st={st} t={t} recording={recording} onToggle={toggle}
+          onNavigate={navigate} cue={cue} nav={nav} onExitRoute={exitRoute} />;
+      } else {
+        const inner = screen === 'history'
+            ? <ApexHistory t={t} onNavigate={navigate} onOpen={(r) => setDetail(r)} />
+          : screen === 'garage'
+            ? <ApexGarage t={t} onNavigate={navigate} />
+          : screen === 'devices'
+            ? <ApexDevices t={t} onNavigate={navigate} gpsSource={t.gps} onSetSource={(v) => setTweak('gps', v)} />
+            : <ApexSettings t={t} onNavigate={navigate} onSetUnits={(v) => setTweak('units', v)} onSetTweak={setTweak} />;
+        view = <div key={screen} style={{ position: 'absolute', inset: 0 }}>{inner}</div>;
+      }
+
+      return (
+        <div style={{ ['--apex-num']: numFont }}>
+          <div id="stage" ref={stageRef}>
+            <IOSDevice dark>
+              {view}
+              {crash && <CrashAlert key={crashKey} onDismiss={() => setCrash(false)} />}
+            </IOSDevice>
+          </div>
+
+          <TweaksPanel>
+            <TweakSection label="Ride state" />
+            <TweakRadio label="Mode" value={t.mode} options={['recording', 'idle']}
+              onChange={(v) => setTweak('mode', v)} />
+            <TweakRadio label="GPS source" value={t.gps} options={['phone', 'external']}
+              onChange={(v) => setTweak('gps', v)} />
+
+            <TweakSection label="Instrument cluster" />
+            <TweakSelect label="Hero metric" value={t.hero}
+              options={['speed', 'distance', 'time', 'avg', 'lean']}
+              onChange={(v) => setTweak('hero', v)} />
+            <TweakRadio label="Units" value={t.units} options={['mi', 'km']}
+              onChange={(v) => setTweak('units', v)} />
+            <TweakSelect label="Readout font" value={t.display}
+              options={['Saira Condensed', 'Oswald', 'Barlow Condensed']}
+              onChange={(v) => setTweak('display', v)} />
+
+            <TweakSection label="Safety" />
+            <TweakToggle label="Auto-lock while riding" value={t.safety !== false}
+              onChange={(v) => setTweak('safety', v)} />
+            <TweakSlider label="Lock above" value={t.lockSpeed == null ? 35 : t.lockSpeed}
+              min={10} max={70} step={5} unit=" mph"
+              onChange={(v) => setTweak('lockSpeed', v)} />
+            <TweakToggle label="Crash detection" value={t.crashDetect !== false}
+              onChange={(v) => setTweak('crashDetect', v)} />
+            <TweakToggle label="Voice cues" value={t.voiceCues !== false}
+              onChange={(v) => setTweak('voiceCues', v)} />
+            <TweakButton label="Simulate crash detection" onClick={triggerCrash} />
+
+            <TweakSection label="Navigation" />
+            <TweakToggle label="Follow route" value={t.follow === true}
+              onChange={(v) => setTweak('follow', v)} />
+            <TweakSelect label="Route" value={t.route || 'Stunt Rd Loop'}
+              options={['Stunt Rd Loop', 'Coast → Topanga', 'Angeles Crest']}
+              onChange={(v) => setTweak('route', v)} />
+
+            <TweakSection label="Brand" />
+            <TweakColor label="Accent" value={t.accent}
+              options={['#FF6B1A', '#FF8A00', '#FF4D2E', '#FF5C00']}
+              onChange={(v) => setTweak('accent', v)} />
+          </TweaksPanel>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById('root')).render(<App />);
+  </script>
+</body>
+</html>
