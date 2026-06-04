@@ -1,4 +1,11 @@
 html, body { margin: 0; height: 100%; }
+/* native safe area support */
+:root {
+  --sat: env(safe-area-inset-top, 0px);
+  --sar: env(safe-area-inset-right, 0px);
+  --sab: env(safe-area-inset-bottom, 0px);
+  --sal: env(safe-area-inset-left, 0px);
+}
 body {
   background: #15161A;
   background-image: radial-gradient(circle at 50% 38%, #1d1f24 0%, #121316 70%);

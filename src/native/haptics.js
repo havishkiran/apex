@@ -1,0 +1,13 @@
+import { Capacitor } from '@capacitor/core';
+import { Haptics, ImpactStyle, NotificationType } from '@capacitor/haptics';
+
+const isNative = Capacitor.isNativePlatform();
+
+export const haptic = {
+  light: () => isNative && Haptics.impact({ style: ImpactStyle.Light }),
+  medium: () => isNative && Haptics.impact({ style: ImpactStyle.Medium }),
+  heavy: () => isNative && Haptics.impact({ style: ImpactStyle.Heavy }),
+  success: () => isNative && Haptics.notification({ type: NotificationType.Success }),
+  warning: () => isNative && Haptics.notification({ type: NotificationType.Warning }),
+  error: () => isNative && Haptics.notification({ type: NotificationType.Error }),
+};

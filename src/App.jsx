@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { Capacitor } from '@capacitor/core';
 import { IOSDevice } from './components/IOSDevice';
 import {
   TweaksPanel, useTweaks, TweakSection, TweakRadio, TweakSelect, TweakToggle,
@@ -11,6 +12,11 @@ import { ApexGarage } from './components/ApexGarage';
 import { ApexDevices } from './components/ApexDevices';
 import { ApexSettings } from './components/ApexSettings';
 import { APEX_ROUTES, fmtNavDist, maneuverVerb } from './components/ApexNav';
+import { requestLocationPermission, startLocationWatch, stopLocationWatch } from './native/location';
+import { startMotionWatch, stopMotionWatch } from './native/motion';
+import { haptic } from './native/haptics';
+
+const isNative = Capacitor.isNativePlatform();
 
 const FONT_MAP = {
   'Saira Condensed': "'Saira Condensed'",
@@ -44,7 +50,7 @@ function fmtCueTime(s) {
 export default function App() {
   const [t, setTweak] = useTweaks(TWEAK_DEFAULTS);
   const recording = t.mode === 'recording';
-  const [st, setSt] = useState(recording ? SEED : ZERO);
+  const [st, setSt] = useState(ZERO);
   const stRef = useRef(st);
   stRef.current = st;
 
@@ -54,7 +60,7 @@ export default function App() {
 
   const [crash, setCrash] = useState(false);
   const [crashKey, setCrashKey] = useState(0);
-  const triggerCrash = () => { setCrashKey((k) => k + 1); setCrash(true); };
+  const triggerCrash = () => { haptic.error(); setCrashKey((k) => k + 1); setCrash(true); };
 
   const [cue, setCue] = useState('');
   const cueOn = t.voiceCues !== false;
@@ -65,9 +71,40 @@ export default function App() {
   const navRef = useRef(nav); navRef.current = nav;
   const exitRoute = () => setTweak('follow', false);
 
-  // ride simulation
+  // native GPS ride tracking
   useEffect(() => {
-    if (!recording) { setSt(ZERO); return; }
+    if (!isNative || !recording) return;
+
+    requestLocationPermission().then((status) => {
+      if (status !== 'granted') return;
+      setSt(ZERO);
+      const startTime = Date.now();
+
+      startLocationWatch((loc) => {
+        setSt((s) => {
+          const elapsed = Math.floor((Date.now() - startTime) / 1000);
+          const dist = s.dist + loc.distDelta;
+          const avg = elapsed > 0 ? dist / (elapsed / 3600) : 0;
+          // lean derived from heading change (crude proxy; real lean needs IMU)
+          const lean = s.lean * 0.8;
+          return { speed: loc.speed, dist, elapsed, avg, lean };
+        });
+      });
+    });
+
+    return () => stopLocationWatch();
+  }, [recording]);
+
+  // native crash detection via accelerometer
+  useEffect(() => {
+    if (!isNative || !recording || t.crashDetect === false) return;
+    startMotionWatch(triggerCrash);
+    return () => stopMotionWatch();
+  }, [recording, t.crashDetect]);
+
+  // browser simulation (non-native only)
+  useEffect(() => {
+    if (isNative || !recording) { if (!isNative) setSt(recording ? SEED : ZERO); return; }
     setSt((s) => (s.elapsed === 0 ? SEED : s));
     const id = setInterval(() => {
       const s = stRef.current;
@@ -105,7 +142,7 @@ export default function App() {
       const remaining = Math.max(0, n.remaining - dPerSec);
       let stepIndex = n.stepIndex;
       if (distToTurn <= 0) {
-        if (stepIndex < r.steps.length - 1) { stepIndex += 1; distToTurn = r.steps[stepIndex].in; }
+        if (stepIndex < r.steps.length - 1) { stepIndex += 1; distToTurn = r.steps[stepIndex].in; haptic.light(); }
         else { distToTurn = 0; }
       }
       setNav({ ...n, stepIndex, distToTurn, remaining,
@@ -147,11 +184,15 @@ export default function App() {
     return () => { clearTimeout(first); clearInterval(id); setCue(''); };
   }, [recording, cueOn, crash, t.units, following]);
 
-  const toggle = () => setTweak('mode', recording ? 'idle' : 'recording');
+  const toggle = () => {
+    haptic.medium();
+    setTweak('mode', recording ? 'idle' : 'recording');
+  };
 
-  // scale device to fit viewport
+  // on native: fill the full screen; on web: scale device frame to fit viewport
   const stageRef = useRef(null);
   useEffect(() => {
+    if (isNative) return;
     const fit = () => {
       const el = stageRef.current; if (!el) return;
       const s = Math.min(window.innerWidth / 402, window.innerHeight / 874, 1);
@@ -180,6 +221,17 @@ export default function App() {
         ? <ApexDevices t={t} onNavigate={navigate} gpsSource={t.gps} onSetSource={(v) => setTweak('gps', v)} />
         : <ApexSettings t={t} onNavigate={navigate} onSetUnits={(v) => setTweak('units', v)} onSetTweak={setTweak} />;
     view = <div key={screen} style={{ position: 'absolute', inset: 0 }}>{inner}</div>;
+  }
+
+  // on native: render full-screen without the iOS device frame (it IS the device)
+  if (isNative) {
+    return (
+      <div style={{ ['--apex-num']: numFont, position: 'fixed', inset: 0, background: '#0E1014',
+        fontFamily: "'Saira', system-ui, sans-serif" }}>
+        {view}
+        {crash && <CrashAlert key={crashKey} onDismiss={() => setCrash(false)} />}
+      </div>
+    );
   }
 
   return (
