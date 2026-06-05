@@ -15,6 +15,7 @@ import { APEX_ROUTES, fmtNavDist, maneuverVerb } from './components/ApexNav';
 import { requestLocationPermission, startLocationWatch, stopLocationWatch } from './native/location';
 import { startMotionWatch, stopMotionWatch } from './native/motion';
 import { haptic } from './native/haptics';
+import { saveRide, loadRides } from './native/rides';
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -39,8 +40,9 @@ const TWEAK_DEFAULTS = {
   route: 'Stunt Rd Loop',
 };
 
-const SEED = { speed: 67, dist: 24.6, elapsed: 2538, avg: 31, lean: 0 };
 const ZERO = { speed: 0, dist: 0, elapsed: 0, avg: 0, lean: 0 };
+// Browser-only simulation seed so the prototype looks alive without GPS
+const SEED = { speed: 67, dist: 24.6, elapsed: 2538, avg: 31, lean: 0 };
 
 function fmtCueTime(s) {
   const m = Math.floor(s / 60);
@@ -186,6 +188,25 @@ export default function App() {
 
   const toggle = () => {
     haptic.medium();
+    if (recording) {
+      // save completed ride
+      const s = stRef.current;
+      if (s.elapsed > 10) {
+        saveRide({
+          id: Date.now(),
+          date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+          bike: 'My Bike',
+          route: following ? routeName : '',
+          dist: s.dist,
+          elapsed: s.elapsed,
+          avg: s.avg,
+          maxSpeed: s.speed,
+          maxLean: Math.abs(s.lean || 0),
+          elev: 0,
+          tags: [],
+        });
+      }
+    }
     setTweak('mode', recording ? 'idle' : 'recording');
   };
 
@@ -226,8 +247,17 @@ export default function App() {
   // on native: render full-screen without the iOS device frame (it IS the device)
   if (isNative) {
     return (
-      <div style={{ ['--apex-num']: numFont, position: 'fixed', inset: 0, background: '#0E1014',
-        fontFamily: "'Saira', system-ui, sans-serif" }}>
+      <div style={{
+        ['--apex-num']: numFont,
+        position: 'fixed', inset: 0,
+        background: '#0E1014',
+        fontFamily: "'Saira', system-ui, sans-serif",
+        overflow: 'hidden',
+        touchAction: 'none',
+        userSelect: 'none',
+        paddingTop: 'env(safe-area-inset-top)',
+        paddingBottom: 'env(safe-area-inset-bottom)',
+      }}>
         {view}
         {crash && <CrashAlert key={crashKey} onDismiss={() => setCrash(false)} />}
       </div>

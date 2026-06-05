@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { AX, SAIRA, COND } from '../tokens';
 import { Glyph } from './Glyph';
 import { Stat, SectionLabel, RouteThumb, ScreenHeader, HeaderIconBtn, Screen } from './shared';
+import { loadRides } from '../native/rides';
 
 function axRand(seed) {
   let a = seed >>> 0;
@@ -77,17 +79,54 @@ function RideRow({ ride, units, onOpen }) {
   );
 }
 
+function fmtDur(sec) {
+  const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60), s = Math.floor(sec % 60);
+  const p = (n) => String(n).padStart(2, '0');
+  return h ? `${h}:${p(m)}:${p(s)}` : `${m}:${p(s)}`;
+}
+
+function normalizeRide(r) {
+  // stored rides from real sessions
+  if (r.elapsed != null) return {
+    ...r,
+    name: r.route || 'Untitled Ride',
+    where: '',
+    dur: fmtDur(r.elapsed),
+    top: r.maxSpeed || 0,
+    lean: r.maxLean || 0,
+    elev: r.elev || 0,
+    pr: false,
+    seed: r.id % 100,
+    route: 'M10 44 C18 32 28 36 36 24 C40 16 34 12 26 18',
+  };
+  return r;
+}
+
 export function ApexHistory({ t, onNavigate, onOpen }) {
   const km = t.units === 'km';
-  const totalDist = RIDES.reduce((s, r) => s + r.dist, 0);
+  const [savedRides, setSavedRides] = useState([]);
+
+  useEffect(() => {
+    const real = loadRides();
+    setSavedRides(real);
+  }, []);
+
+  const allRides = savedRides.map(normalizeRide);
+
+  const totalDist = allRides.reduce((s, r) => s + (r.dist || 0), 0);
+  const totalSec = allRides.reduce((s, r) => s + (r.elapsed || 0), 0);
+  const topSpeed = Math.max(...allRides.map((r) => r.top || r.maxSpeed || 0));
   const td = (km ? totalDist * 1.60934 : totalDist).toFixed(0);
+  const th = (totalSec / 3600).toFixed(1);
+  const ts = Math.round(km ? topSpeed * 1.60934 : topSpeed);
+
   return (
     <Screen tab="history" onNavigate={onNavigate}>
-      <ScreenHeader subtitle={`${RIDES.length} rides logged`} title="History"
+      <ScreenHeader subtitle={`${allRides.length} ride${allRides.length !== 1 ? 's' : ''} logged`} title="History"
         right={<HeaderIconBtn name="calendar" />} />
 
       <div style={{ display: 'flex', gap: 10, padding: '4px 0 18px' }}>
-        {[['Distance', td, km ? 'km' : 'mi'], ['Time', '5.4', 'hrs'], ['Top', Math.round(km ? 84 * 1.60934 : 84), km ? 'km/h' : 'mph']].map((s, i) => (
+        {[['Distance', td, km ? 'km' : 'mi'], ['Time', th, 'hrs'], ['Top', ts, km ? 'km/h' : 'mph']].map((s, i) => (
           <div key={i} style={{ flex: 1, padding: '14px 16px', background: AX.surface,
             border: `1px solid ${AX.border2}`, borderRadius: 16 }}>
             <Stat label={s[0]} value={s[1]} unit={s[2]} size={28} />
@@ -95,10 +134,23 @@ export function ApexHistory({ t, onNavigate, onOpen }) {
         ))}
       </div>
 
-      <SectionLabel>This week</SectionLabel>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
-        {RIDES.map((r) => <RideRow key={r.id} ride={r} units={t.units} onOpen={onOpen} />)}
-      </div>
+      {allRides.length === 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+          padding: '60px 24px', gap: 12 }}>
+          <Glyph name="track" size={40} color={AX.ghost} sw={1.4} />
+          <span style={{ fontFamily: SAIRA, fontSize: 16, fontWeight: 600, color: AX.dim }}>No rides yet</span>
+          <span style={{ fontFamily: SAIRA, fontSize: 13, color: AX.faint, textAlign: 'center' }}>
+            Hit Start on the Track screen to record your first ride
+          </span>
+        </div>
+      ) : (
+        <>
+          <SectionLabel>Recent rides</SectionLabel>
+          <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+            {allRides.map((r) => <RideRow key={r.id} ride={r} units={t.units} onOpen={onOpen} />)}
+          </div>
+        </>
+      )}
       <div style={{ height: 8 }} />
     </Screen>
   );
