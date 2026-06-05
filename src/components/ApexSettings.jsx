@@ -1,10 +1,9 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { AX, SAIRA, COND } from '../tokens';
 import { Glyph } from './Glyph';
 import { SectionLabel, ScreenHeader, Screen } from './shared';
 import { ApexWordmark } from './ApexLogo';
-
-const EMERGENCY = { name: 'Sam Rivera', rel: 'Emergency contact', phone: '' };
+import { storage, compressImage } from '../native/storage';
 
 function Switch({ on, onClick }) {
   return (
@@ -30,7 +29,6 @@ function Segmented({ value, options, onChange }) {
             minWidth: 42, height: 26, padding: '0 12px', borderRadius: 9, border: 'none', cursor: 'pointer',
             background: on ? AX.orange : 'transparent', color: on ? '#0E1014' : AX.dim,
             fontFamily: SAIRA, fontSize: 12.5, fontWeight: 700, letterSpacing: 0.5, textTransform: 'uppercase',
-            transition: 'background .15s',
           }}>{o}</button>
         );
       })}
@@ -64,24 +62,38 @@ function Group({ children }) {
   );
 }
 
-function ValueChevron({ value }) {
+function InlineEdit({ value, placeholder, onSave, inputStyle = {} }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState('');
+  if (editing) {
+    return (
+      <input autoFocus value={draft} placeholder={placeholder}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={() => { onSave(draft.trim()); setEditing(false); }}
+        onKeyDown={(e) => { if (e.key === 'Enter') e.target.blur(); if (e.key === 'Escape') setEditing(false); }}
+        style={{ fontFamily: SAIRA, fontSize: 15, color: AX.text, background: 'transparent',
+          border: 'none', borderBottom: `1px solid ${AX.orange}`, outline: 'none',
+          minWidth: 80, ...inputStyle }} />
+    );
+  }
   return (
-    <span style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-      {value && <span style={{ fontFamily: SAIRA, fontSize: 14, color: AX.dim }}>{value}</span>}
-      <Glyph name="chevron" size={16} color={AX.ghost} sw={2.2} />
+    <span onClick={() => { setDraft(value || ''); setEditing(true); }}
+      style={{ fontFamily: SAIRA, fontSize: 15, color: value ? AX.text : AX.faint,
+        cursor: 'text', borderBottom: `1px dashed ${AX.border}`, ...inputStyle }}>
+      {value || placeholder}
     </span>
   );
 }
 
-// Simple avatar placeholder
-function AvatarSlot() {
-  const [src, setSrc] = useState(null);
-  const handleClick = () => {
+function AvatarSlot({ src, onSave }) {
+  const handleClick = async () => {
     const input = document.createElement('input');
     input.type = 'file'; input.accept = 'image/*';
-    input.onchange = (e) => {
+    input.onchange = async (e) => {
       const file = e.target.files[0];
-      if (file) { const r = new FileReader(); r.onload = (ev) => setSrc(ev.target.result); r.readAsDataURL(file); }
+      if (!file) return;
+      const b64 = await compressImage(file);
+      onSave(b64);
     };
     input.click();
   };
@@ -96,7 +108,25 @@ function AvatarSlot() {
   );
 }
 
+function exportCSV() {
+  try {
+    const rides = JSON.parse(localStorage.getItem('apex_rides') || '[]');
+    if (rides.length === 0) { alert('No rides to export yet.'); return; }
+    const header = 'Date,Bike,Distance (mi),Duration (s),Avg Speed (mph),Top Speed (mph),Max Lean (deg)';
+    const rows = rides.map(r => [
+      r.date || '', r.bike || '',
+      (r.dist || 0).toFixed(2), r.elapsed || 0,
+      Math.round(r.avg || 0), Math.round(r.maxSpeed || 0), Math.round(r.maxLean || 0),
+    ].join(','));
+    const blob = new Blob([[header, ...rows].join('\n')], { type: 'text/csv' });
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob); a.download = 'apex-rides.csv'; a.click();
+  } catch (e) { console.error(e); }
+}
+
 export function ApexSettings({ t, onNavigate, onSetUnits, onSetTweak }) {
+  const [profile, setProfile] = useState({ name: '', avatar: null });
+  const [emergency, setEmergency] = useState({ name: '', phone: '' });
   const [autoStart, setAutoStart] = useState(true);
   const [autoPause, setAutoPause] = useState(true);
   const [keepAwake, setKeepAwake] = useState(true);
@@ -104,20 +134,38 @@ export function ApexSettings({ t, onNavigate, onSetUnits, onSetTweak }) {
   const crashOn = t.crashDetect !== false;
   const cuesOn = t.voiceCues !== false;
 
+  useEffect(() => {
+    setProfile(storage.getProfile());
+    setEmergency(storage.getEmergency());
+  }, []);
+
+  const saveProfile = (updates) => {
+    const p = { ...profile, ...updates };
+    setProfile(p); storage.saveProfile(p);
+  };
+
+  const saveEmergency = (updates) => {
+    const e = { ...emergency, ...updates };
+    setEmergency(e); storage.saveEmergency(e);
+  };
+
   return (
     <Screen tab="settings" onNavigate={onNavigate}>
-      <ScreenHeader subtitle="Apex Pro" title="Settings" />
+      <ScreenHeader subtitle="Your profile" title="Settings" />
 
-      <button style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: 14,
-        background: AX.surface, border: `1px solid ${AX.border2}`, borderRadius: 18, cursor: 'pointer',
-        textAlign: 'left', marginBottom: 18 }}>
-        <AvatarSlot />
-        <div style={{ flex: 1 }}>
-          <div style={{ fontFamily: COND, fontWeight: 700, fontSize: 22, color: AX.text, lineHeight: 1.1 }}>Rider</div>
-          <div style={{ fontFamily: SAIRA, fontSize: 13, color: AX.faint }}>Edit profile · Apex Pro member</div>
+      {/* Profile */}
+      <div style={{ width: '100%', display: 'flex', alignItems: 'center', gap: 14, padding: 14,
+        background: AX.surface, border: `1px solid ${AX.border2}`, borderRadius: 18, marginBottom: 18 }}>
+        <AvatarSlot src={profile.avatar} onSave={(avatar) => saveProfile({ avatar })} />
+        <div style={{ flex: 1, minWidth: 0 }}>
+          <InlineEdit value={profile.name} placeholder="Your name"
+            onSave={(name) => saveProfile({ name })}
+            inputStyle={{ fontSize: 20, fontFamily: COND, fontWeight: 700 }} />
+          <div style={{ fontFamily: SAIRA, fontSize: 12, color: AX.faint, marginTop: 4 }}>
+            Tap name or photo to edit
+          </div>
         </div>
-        <Glyph name="chevron" size={18} color={AX.ghost} sw={2.2} />
-      </button>
+      </div>
 
       <SectionLabel>Recording</SectionLabel>
       <Group>
@@ -132,8 +180,17 @@ export function ApexSettings({ t, onNavigate, onSetUnits, onSetTweak }) {
         <Row icon="shield" label="Crash detection" sub="Auto-alert your contact after a fall"
           right={<Switch on={crashOn} onClick={() => set('crashDetect', !crashOn)} />} />
         <Row icon="heart" label="Emergency contact"
-          right={<ValueChevron value={EMERGENCY.name} />} />
-        <Row icon="lock" label="Auto-lock while riding" sub={`Above ${t.lockSpeed == null ? 35 : t.lockSpeed} mph`}
+          right={
+            <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'flex-end', gap: 6 }}>
+              <InlineEdit value={emergency.name} placeholder="Contact name"
+                onSave={(name) => saveEmergency({ name })} />
+              <InlineEdit value={emergency.phone} placeholder="Phone number"
+                onSave={(phone) => saveEmergency({ phone })}
+                inputStyle={{ fontSize: 12, color: AX.dim }} />
+            </div>
+          } />
+        <Row icon="lock" label="Auto-lock while riding"
+          sub={`Above ${t.lockSpeed == null ? 35 : t.lockSpeed} mph`}
           right={<Switch on={t.safety !== false} onClick={() => set('safety', t.safety === false)} />} last />
       </Group>
 
@@ -147,17 +204,25 @@ export function ApexSettings({ t, onNavigate, onSetUnits, onSetTweak }) {
           right={<Segmented value={t.units} options={['mi', 'km']} onChange={onSetUnits} />} last />
       </Group>
 
-      <SectionLabel style={{ padding: '20px 4px 10px' }}>Account</SectionLabel>
+      <SectionLabel style={{ padding: '20px 4px 10px' }}>Data</SectionLabel>
       <Group>
-        <Row icon="trophy" label="Apex Pro" right={<ValueChevron value="Active" />} />
-        <Row icon="share" label="Export rides" sub="GPX · CSV" right={<ValueChevron />} />
-        <Row icon="shield" label="Privacy" right={<ValueChevron />} last />
+        <Row icon="share" label="Export rides" sub="Downloads ride history as CSV"
+          right={
+            <button onClick={exportCSV} style={{ height: 30, padding: '0 14px', borderRadius: 15,
+              border: `1px solid ${AX.border}`, background: 'transparent', cursor: 'pointer',
+              fontFamily: SAIRA, fontSize: 12.5, fontWeight: 600, color: AX.text }}>
+              Export
+            </button>
+          } />
+        <Row icon="shield" label="Privacy" sub="All data stored on-device only"
+          right={<span style={{ fontFamily: SAIRA, fontSize: 13, color: AX.dim }}>On-device</span>} last />
       </Group>
 
       <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 8, padding: '34px 0 16px' }}>
         <ApexWordmark height={26} color={AX.text} accent={t.accent} />
         <span style={{ fontFamily: SAIRA, fontSize: 12, color: AX.faint, letterSpacing: 0.4 }}>
-          Version 1.0 · Ride logged, lean noted.</span>
+          Version 1.0 · Ride logged, lean noted.
+        </span>
       </div>
     </Screen>
   );

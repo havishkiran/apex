@@ -318,7 +318,7 @@ export function ApexTrack({ st, t, recording, onToggle, onNavigate, cue, nav, on
         <div style={{ position: 'absolute', top: 56, left: 14, right: 14, zIndex: 6 }}>
           <TurnBanner nav={nav} units={t.units} accent={t.accent} onExit={onExitRoute} />
           <div style={{ display: 'flex', justifyContent: 'space-between', marginTop: 12 }}>
-            <GpsChip source={t.gps} level={t.gps === 'external' ? 4 : 3} battery={84} recording={recording} />
+            <GpsChip source={t.gps} level={t.gps === 'external' ? 4 : 3} recording={recording} />
             <IconBtn name="recenter" />
           </div>
         </div>
@@ -328,7 +328,7 @@ export function ApexTrack({ st, t, recording, onToggle, onNavigate, cue, nav, on
           display: 'flex', alignItems: 'center', justifyContent: 'space-between',
         }}>
           <GpsChip source={t.gps} level={t.gps === 'external' ? 4 : 3}
-            battery={84} recording={recording} />
+            recording={recording} />
           <div style={{ position: 'absolute', left: 0, right: 0, display: 'flex', justifyContent: 'center', pointerEvents: 'none' }}>
             {locked ? <LockedPill /> : <RecPill recording={recording} />}
           </div>

@@ -16,6 +16,7 @@ import { requestLocationPermission, startLocationWatch, stopLocationWatch } from
 import { startMotionWatch, stopMotionWatch } from './native/motion';
 import { haptic } from './native/haptics';
 import { saveRide, loadRides } from './native/rides';
+import { storage } from './native/storage';
 
 const isNative = Capacitor.isNativePlatform();
 
@@ -28,7 +29,7 @@ const FONT_MAP = {
 const TWEAK_DEFAULTS = {
   mode: 'idle',
   hero: 'speed',
-  units: 'km',
+  units: (() => { try { return JSON.parse(localStorage.getItem('apex_settings') || '{}').units || 'km'; } catch { return 'km'; } })(),
   gps: 'phone',
   accent: '#FF6B1A',
   display: 'Saira Condensed',
@@ -205,6 +206,13 @@ export default function App() {
           elev: 0,
           tags: [],
         });
+        // auto-update active bike odometer
+        const bikes = storage.getBikes();
+        const activeBike = bikes.find((b) => b.active);
+        if (activeBike) {
+          activeBike.odo = (parseFloat(activeBike.odo) || 0) + s.dist;
+          storage.saveBikes(bikes);
+        }
       }
     }
     setTweak('mode', recording ? 'idle' : 'recording');
@@ -240,7 +248,7 @@ export default function App() {
         ? <ApexGarage t={t} onNavigate={navigate} />
       : screen === 'devices'
         ? <ApexDevices t={t} onNavigate={navigate} gpsSource={t.gps} onSetSource={(v) => setTweak('gps', v)} />
-        : <ApexSettings t={t} onNavigate={navigate} onSetUnits={(v) => setTweak('units', v)} onSetTweak={setTweak} />;
+        : <ApexSettings t={t} onNavigate={navigate} onSetUnits={(v) => { setTweak('units', v); storage.saveSettings({ ...storage.getSettings(), units: v }); }} onSetTweak={setTweak} />;
     view = <div key={screen} style={{ position: 'absolute', inset: 0 }}>{inner}</div>;
   }
 

@@ -16,23 +16,6 @@ function makeSeries(seed, n, lo, hi, smooth = 0.55) {
   return out;
 }
 
-export const RIDES = [
-  { id: 'r1', name: 'Mulholland Run', where: 'Santa Monica Mtns', date: 'Today · 8:42 AM',
-    dist: 24.7, dur: '43:21', avg: 34, top: 78, lean: 47, elev: 2840, pr: true, seed: 11,
-    route: 'M8 46 C16 30 30 38 34 24 C37 14 28 12 22 16' },
-  { id: 'r2', name: 'Coast to Topanga', where: 'PCH · Topanga Cyn', date: 'Yesterday · 5:10 PM',
-    dist: 38.2, dur: '1:08:55', avg: 33, top: 71, lean: 41, elev: 3110, pr: false, seed: 27,
-    route: 'M10 48 C14 36 26 40 24 28 C22 18 34 16 44 22' },
-  { id: 'r3', name: 'Angeles Crest', where: 'CA-2 · La Cañada', date: 'Sat · 7:05 AM',
-    dist: 61.4, dur: '1:52:30', avg: 33, top: 84, lean: 52, elev: 6720, pr: false, seed: 39,
-    route: 'M8 40 C20 44 18 26 30 30 C40 33 36 14 46 18' },
-  { id: 'r4', name: 'Sunday Canyon Loop', where: 'Latigo · Kanan', date: 'Sun · 9:20 AM',
-    dist: 29.8, dur: '54:12', avg: 33, top: 69, lean: 44, elev: 3380, pr: false, seed: 53,
-    route: 'M10 44 C18 28 30 36 32 22 C33 14 22 12 14 18' },
-  { id: 'r5', name: 'Decker Commute', where: 'Westlake', date: 'Fri · 6:48 PM',
-    dist: 12.1, dur: '22:04', avg: 33, top: 58, lean: 33, elev: 980, pr: false, seed: 61,
-    route: 'M10 46 C22 42 20 28 34 30 C42 31 40 20 46 24' },
-];
 
 function PrTag() {
   return (
