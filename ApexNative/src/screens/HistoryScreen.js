@@ -1,6 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import {
-  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal,
+  View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
 } from 'react-native';
 import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -39,15 +39,23 @@ function StatCard({ label, value, unit }) {
   );
 }
 
-function RideRow({ ride, units, onPress }) {
+function RideRow({ ride, units, onPress, onDelete }) {
   const km = units === 'km';
   const dist = km ? ride.distKm?.toFixed(1) : (ride.distKm / 1.60934)?.toFixed(1);
   const top = km ? Math.round(ride.maxSpeedKmh) : Math.round(ride.maxSpeedKmh / 1.60934);
   const su = km ? 'km/h' : 'mph';
   const du = km ? 'km' : 'mi';
 
+  const handleLongPress = () => {
+    Alert.alert('Delete Ride', 'Remove this ride from history?', [
+      { text: 'Cancel', style: 'cancel' },
+      { text: 'Delete', style: 'destructive', onPress: onDelete },
+    ]);
+  };
+
   return (
-    <TouchableOpacity onPress={onPress} activeOpacity={0.75} style={styles.rideRow}>
+    <TouchableOpacity onPress={onPress} onLongPress={handleLongPress}
+      activeOpacity={0.75} style={styles.rideRow}>
       <View style={styles.rideThumb}>
         <Glyph name="track" size={22} color={AX.orange} />
       </View>
@@ -123,6 +131,9 @@ function RideDetail({ ride, units, onClose }) {
           <StatCard label="Duration" value={fmtDur(ride.elapsed)} />
           <StatCard label="Top Speed" value={top} unit={su} />
           <StatCard label="Avg Speed" value={avg} unit={su} />
+          {ride.maxLean > 0 && (
+            <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />
+          )}
         </View>
       </ScrollView>
     </View>
@@ -138,6 +149,12 @@ export default function HistoryScreen({ units = 'km' }) {
   useEffect(() => {
     storage.getRides().then(setRides);
   }, []);
+
+  const deleteRide = async (id) => {
+    const updated = rides.filter(r => r.id !== id);
+    setRides(updated);
+    await storage.saveRides(updated);
+  };
 
   const totalDistKm = rides.reduce((s, r) => s + (r.distKm || 0), 0);
   const totalSec = rides.reduce((s, r) => s + (r.elapsed || 0), 0);
@@ -172,7 +189,9 @@ export default function HistoryScreen({ units = 'km' }) {
           <>
             <Text style={styles.sectionLabel}>Recent rides</Text>
             {rides.map((r) => (
-              <RideRow key={r.id} ride={r} units={units} onPress={() => setSelectedRide(r)} />
+              <RideRow key={r.id} ride={r} units={units}
+                onPress={() => setSelectedRide(r)}
+                onDelete={() => deleteRide(r.id)} />
             ))}
           </>
         )}

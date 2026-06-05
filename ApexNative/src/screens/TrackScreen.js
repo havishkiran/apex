@@ -1,17 +1,16 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Pressable,
-  Platform, Animated,
+  View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, Animated,
 } from 'react-native';
 import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
+import { accelerometer, setUpdateIntervalForType, SensorTypes } from 'react-native-sensors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import { AX, FONTS } from '../tokens';
-import { saveRide } from '../native/storage';
+import { saveRide, storage } from '../native/storage';
 
 const HAPTIC = { enableVibrateFallback: true, ignoreAndroidSystemSettings: false };
-
 function haptic(type = 'impactMedium') {
   ReactNativeHapticFeedback.trigger(type, HAPTIC);
 }
@@ -49,12 +48,12 @@ function RecPill({ recording }) {
   );
 }
 
-function Metric({ label, value, unit, large }) {
+function Metric({ label, value, unit }) {
   return (
     <View style={styles.metric}>
       <Text style={styles.metricLabel}>{label}</Text>
       <View style={styles.metricRow}>
-        <Text style={[styles.metricValue, large && styles.metricLarge]}>{value}</Text>
+        <Text style={styles.metricValue}>{value}</Text>
         {unit ? <Text style={styles.metricUnit}>{unit}</Text> : null}
       </View>
     </View>
@@ -63,19 +62,6 @@ function Metric({ label, value, unit, large }) {
 
 function RecordButton({ recording, onPress }) {
   const scale = useRef(new Animated.Value(1)).current;
-  const pulse = useRef(new Animated.Value(0)).current;
-
-  useEffect(() => {
-    if (!recording) { pulse.setValue(0); return; }
-    const anim = Animated.loop(
-      Animated.sequence([
-        Animated.timing(pulse, { toValue: 1, duration: 1000, useNativeDriver: true }),
-        Animated.timing(pulse, { toValue: 0, duration: 1000, useNativeDriver: true }),
-      ])
-    );
-    anim.start();
-    return () => anim.stop();
-  }, [recording]);
 
   const handlePress = () => {
     Animated.sequence([
@@ -89,12 +75,46 @@ function RecordButton({ recording, onPress }) {
     <Pressable onPress={handlePress}>
       <Animated.View style={{ transform: [{ scale }] }}>
         <View style={[styles.recBtn, recording && styles.recBtnActive]}>
-          {recording
-            ? <View style={styles.stopIcon} />
-            : <View style={styles.playIcon} />}
+          {recording ? <View style={styles.stopIcon} /> : <View style={styles.playIcon} />}
         </View>
       </Animated.View>
     </Pressable>
+  );
+}
+
+function CrashModal({ visible, emergency, onDismiss }) {
+  const [countdown, setCountdown] = useState(30);
+
+  useEffect(() => {
+    if (!visible) { setCountdown(30); return; }
+    setCountdown(30);
+    const t = setInterval(() => setCountdown(c => Math.max(0, c - 1)), 1000);
+    return () => clearInterval(t);
+  }, [visible]);
+
+  return (
+    <Modal visible={visible} transparent animationType="fade" statusBarTranslucent>
+      <View style={styles.crashOverlay}>
+        <View style={styles.crashCard}>
+          <View style={styles.crashIconRow}>
+            <View style={styles.crashDot} />
+            <Text style={styles.crashLabel}>CRASH DETECTED</Text>
+          </View>
+          <Text style={styles.crashCountdown}>{countdown}</Text>
+          <Text style={styles.crashSub}>
+            {countdown > 0
+              ? `Alerting emergency contact in ${countdown}s`
+              : emergency?.name ? `Notifying ${emergency.name}…` : 'Alerting emergency contact…'}
+          </Text>
+          <TouchableOpacity onPress={onDismiss}
+            style={[styles.crashBtn, countdown === 0 && styles.crashBtnDim]}>
+            <Text style={styles.crashBtnText}>
+              {countdown > 0 ? "I'M OK — CANCEL" : 'DISMISS'}
+            </Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+    </Modal>
   );
 }
 
@@ -109,12 +129,19 @@ export default function TrackScreen({ units = 'km' }) {
   const [region, setRegion] = useState(null);
   const [coords, setCoords] = useState([]);
   const coordsRef = useRef([]);
+
+  const [leanAngle, setLeanAngle] = useState(0);
+  const leanRef = useRef(0);
+  const accelSubRef = useRef(null);
+  const [crashVisible, setCrashVisible] = useState(false);
+  const crashCooldownRef = useRef(false);
+  const [emergency, setEmergency] = useState(null);
+
   const startTimeRef = useRef(null);
   const watchIdRef = useRef(null);
   const timerRef = useRef(null);
   const km = units === 'km';
 
-  // Request location permission and get initial position
   useEffect(() => {
     Geolocation.requestAuthorization();
     Geolocation.getCurrentPosition(
@@ -125,21 +152,48 @@ export default function TrackScreen({ units = 'km' }) {
       () => {},
       { enableHighAccuracy: true, timeout: 10000 }
     );
+    storage.getEmergency().then(setEmergency);
   }, []);
+
+  const startAccelerometer = () => {
+    try {
+      setUpdateIntervalForType(SensorTypes.accelerometer, 100);
+      accelSubRef.current = accelerometer.subscribe(({ x, y, z }) => {
+        // Lean angle: phone tilt from vertical (x-axis roll)
+        const raw = Math.atan2(x, Math.sqrt(y * y + z * z)) * (180 / Math.PI);
+        leanRef.current = leanRef.current * 0.75 + raw * 0.25;
+        const abs = Math.abs(Math.round(leanRef.current));
+        setLeanAngle(abs);
+        setSt(s => ({ ...s, maxLean: Math.max(s.maxLean, abs) }));
+
+        // Crash detection: sudden high G-force spike (> 5g)
+        const gTotal = Math.sqrt(x * x + y * y + z * z) / 9.81;
+        if (gTotal > 5 && !crashCooldownRef.current) {
+          crashCooldownRef.current = true;
+          haptic('notificationWarning');
+          setCrashVisible(true);
+        }
+      });
+    } catch {}
+  };
+
+  const stopAccelerometer = () => {
+    accelSubRef.current?.unsubscribe();
+    accelSubRef.current = null;
+  };
 
   const startRecording = () => {
     haptic('impactMedium');
     startTimeRef.current = Date.now();
     coordsRef.current = [];
     setCoords([]);
+    crashCooldownRef.current = false;
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
 
-    // elapsed timer
     timerRef.current = setInterval(() => {
       setSt((s) => ({ ...s, elapsed: Math.floor((Date.now() - startTimeRef.current) / 1000) }));
     }, 1000);
 
-    // GPS watch
     watchIdRef.current = Geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -150,19 +204,19 @@ export default function TrackScreen({ units = 'km' }) {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           const distKm = s.dist + (speed / 3600);
           const avg = elapsed > 0 ? distKm / (elapsed / 3600) : 0;
-          const maxSpeed = Math.max(s.maxSpeed, speed);
-          return { speed, dist: distKm, elapsed, avg, maxSpeed, maxLean: s.maxLean };
+          return { ...s, speed, dist: distKm, elapsed, avg, maxSpeed: Math.max(s.maxSpeed, speed) };
         });
         if (mapRef.current) {
-          mapRef.current.animateToRegion({
-            latitude, longitude,
-            latitudeDelta: 0.005, longitudeDelta: 0.005,
-          }, 500);
+          mapRef.current.animateToRegion(
+            { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500
+          );
         }
       },
       () => {},
       { enableHighAccuracy: true, distanceFilter: 5, interval: 1000, fastestInterval: 500 }
     );
+
+    startAccelerometer();
     setRecording(true);
   };
 
@@ -170,6 +224,7 @@ export default function TrackScreen({ units = 'km' }) {
     haptic('notificationSuccess');
     clearInterval(timerRef.current);
     Geolocation.clearWatch(watchIdRef.current);
+    stopAccelerometer();
     setRecording(false);
     const s = stRef.current;
     if (s.elapsed > 10) {
@@ -183,8 +238,20 @@ export default function TrackScreen({ units = 'km' }) {
         maxLean: s.maxLean,
         coords: coordsRef.current,
       });
+      // Sync odometer to active bike
+      const bikes = await storage.getBikes();
+      const activeIdx = bikes.findIndex(b => b.active);
+      if (activeIdx >= 0) {
+        const updated = [...bikes];
+        updated[activeIdx] = {
+          ...updated[activeIdx],
+          odo: ((parseFloat(updated[activeIdx].odo) || 0) + s.dist).toFixed(1),
+        };
+        await storage.saveBikes(updated);
+      }
     }
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+    setLeanAngle(0);
   };
 
   const toggle = () => recording ? stopRecording() : startRecording();
@@ -196,7 +263,6 @@ export default function TrackScreen({ units = 'km' }) {
 
   return (
     <View style={styles.container}>
-      {/* Full-screen native Apple Map */}
       {region && (
         <MapView
           ref={mapRef}
@@ -219,21 +285,17 @@ export default function TrackScreen({ units = 'km' }) {
         </MapView>
       )}
 
-      {/* Dark gradient overlay at bottom */}
       <View style={styles.mapOverlay} pointerEvents="none" />
 
-      {/* Top HUD */}
       <View style={[styles.topHud, { top: insets.top + 12 }]}>
         <View style={styles.gpsPill}>
-          <View style={[styles.gpsDoc, { backgroundColor: recording ? '#34C759' : AX.faint }]} />
+          <View style={[styles.gpsDot, { backgroundColor: recording ? '#34C759' : AX.faint }]} />
           <Text style={styles.gpsText}>GPS</Text>
         </View>
         <RecPill recording={recording} />
       </View>
 
-      {/* Console panel */}
       <View style={[styles.console, { paddingBottom: insets.bottom + 16 }]}>
-        {/* Hero speed */}
         <View style={styles.heroRow}>
           <View style={styles.heroMetric}>
             <Text style={styles.heroValue}>{disp(st.speed)}</Text>
@@ -247,30 +309,33 @@ export default function TrackScreen({ units = 'km' }) {
 
         <View style={styles.divider} />
 
-        {/* Secondary metrics */}
         <View style={styles.metricsRow}>
           <Metric label="Distance" value={distDisp(st.dist)} unit={distUnit} />
           <Metric label="Elapsed" value={fmtTime(st.elapsed)} />
-          <Metric label="Avg" value={disp(st.avg)} unit={speedUnit} />
+          {recording
+            ? <Metric label="Lean" value={`${leanAngle}°`} />
+            : <Metric label="Avg" value={disp(st.avg)} unit={speedUnit} />
+          }
         </View>
 
         <Text style={[styles.startHint, { opacity: recording ? 0 : 0.5 }]}>
           Tap to start recording
         </Text>
       </View>
+
+      <CrashModal
+        visible={crashVisible}
+        emergency={emergency}
+        onDismiss={() => { setCrashVisible(false); crashCooldownRef.current = false; }}
+      />
     </View>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: AX.bg },
-  mapOverlay: {
-    position: 'absolute', left: 0, right: 0, bottom: 0, height: 300,
-    backgroundColor: 'transparent',
-    // gradient-like shadow handled by console background
-  },
+  mapOverlay: { position: 'absolute', left: 0, right: 0, bottom: 0, height: 300 },
 
-  // Top HUD
   topHud: {
     position: 'absolute', left: 16, right: 16,
     flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
@@ -279,10 +344,9 @@ const styles = StyleSheet.create({
     flexDirection: 'row', alignItems: 'center', gap: 7, height: 34, paddingHorizontal: 13,
     borderRadius: 17, backgroundColor: 'rgba(12,13,16,0.72)', borderWidth: 1, borderColor: AX.border,
   },
-  gpsDoc: { width: 7, height: 7, borderRadius: 4 },
+  gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, letterSpacing: 0.7, color: AX.dim, textTransform: 'uppercase' },
 
-  // Rec pill
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: 7, height: 30, paddingHorizontal: 13,
     borderRadius: 15, backgroundColor: 'rgba(12,13,16,0.72)', borderWidth: 1, borderColor: AX.border,
@@ -290,7 +354,6 @@ const styles = StyleSheet.create({
   pillDot: { width: 8, height: 8, borderRadius: 4 },
   pillText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, letterSpacing: 1.2, textTransform: 'uppercase' },
 
-  // Console
   console: {
     position: 'absolute', left: 0, right: 0, bottom: 0,
     backgroundColor: 'rgba(15,16,20,0.92)',
@@ -298,12 +361,9 @@ const styles = StyleSheet.create({
     borderTopWidth: 1, borderColor: AX.border,
     paddingTop: 24, paddingHorizontal: 24,
   },
-  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 0 },
+  heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heroMetric: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  heroValue: {
-    fontFamily: FONTS.cond, fontSize: 104, lineHeight: 88,
-    color: AX.text, letterSpacing: -1,
-  },
+  heroValue: { fontFamily: FONTS.cond, fontSize: 104, lineHeight: 88, color: AX.text, letterSpacing: -1 },
   heroMeta: { flexDirection: 'column', gap: 2, marginBottom: 10 },
   heroUnit: { fontFamily: FONTS.sairaBold, fontSize: 17, letterSpacing: 1, textTransform: 'uppercase', color: AX.dim },
   heroLabel: { fontFamily: FONTS.sairaBold, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: AX.faint },
@@ -315,21 +375,17 @@ const styles = StyleSheet.create({
   metricLabel: { fontFamily: FONTS.sairaBold, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: AX.faint },
   metricRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
   metricValue: { fontFamily: FONTS.cond, fontSize: 30, lineHeight: 30, color: AX.text },
-  metricLarge: { fontSize: 42, lineHeight: 42 },
   metricUnit: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.dim, textTransform: 'uppercase', marginBottom: 2 },
 
-  // Record button
   recBtn: {
-    width: 78, height: 78, borderRadius: 39,
-    backgroundColor: AX.orange,
+    width: 78, height: 78, borderRadius: 39, backgroundColor: AX.orange,
     alignItems: 'center', justifyContent: 'center',
     shadowColor: AX.orange, shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.42, shadowRadius: 16,
   },
   recBtnActive: {
     backgroundColor: 'rgba(12,13,16,0.5)',
-    borderWidth: 4, borderColor: AX.orange,
-    shadowOpacity: 0,
+    borderWidth: 4, borderColor: AX.orange, shadowOpacity: 0,
   },
   playIcon: {
     width: 0, height: 0, marginLeft: 4,
@@ -339,4 +395,26 @@ const styles = StyleSheet.create({
   stopIcon: { width: 26, height: 26, borderRadius: 6, backgroundColor: AX.orange },
 
   startHint: { fontFamily: FONTS.saira, fontSize: 13, color: AX.dim, textAlign: 'center', marginTop: 12 },
+
+  // Crash modal
+  crashOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  crashCard: {
+    width: '100%', backgroundColor: AX.surface, borderRadius: 28,
+    borderWidth: 1, borderColor: 'rgba(255,60,50,0.4)',
+    padding: 28, alignItems: 'center', gap: 10,
+  },
+  crashIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
+  crashDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,60,50,0.9)' },
+  crashLabel: { fontFamily: FONTS.sairaBold, fontSize: 13, color: 'rgba(255,80,60,0.9)', letterSpacing: 2 },
+  crashCountdown: { fontFamily: FONTS.cond, fontSize: 88, lineHeight: 80, color: AX.text, letterSpacing: -1 },
+  crashSub: { fontFamily: FONTS.saira, fontSize: 14, color: AX.dim, textAlign: 'center', lineHeight: 20 },
+  crashBtn: {
+    marginTop: 8, width: '100%', height: 52, borderRadius: 26,
+    backgroundColor: AX.orange, alignItems: 'center', justifyContent: 'center',
+  },
+  crashBtnDim: { backgroundColor: AX.border },
+  crashBtnText: { fontFamily: FONTS.sairaBold, fontSize: 14, color: '#0C0D10', letterSpacing: 1 },
 });
