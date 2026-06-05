@@ -193,7 +193,7 @@ function Field({ label, value, onChange, placeholder, type = 'text', unit }) {
         border: `1px solid ${AX.border}`, borderRadius: 12 }}>
         <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
           placeholder={placeholder}
-          style={{ flex: 1, fontFamily: SAIRA, fontSize: 15, color: AX.text,
+          style={{ flex: 1, minWidth: 0, fontFamily: SAIRA, fontSize: 15, color: AX.text,
             background: 'transparent', border: 'none', outline: 'none', padding: '12px 14px' }} />
         {unit && <span style={{ fontFamily: SAIRA, fontSize: 13, color: AX.dim, paddingRight: 14 }}>{unit}</span>}
       </div>
@@ -225,8 +225,10 @@ function AddBikeModal({ units, onSave, onClose }) {
   return (
     <div style={{ position: 'fixed', inset: 0, zIndex: 100, display: 'flex', alignItems: 'flex-end',
       background: 'rgba(0,0,0,0.65)', backdropFilter: 'blur(6px)' }} onClick={onClose}>
-      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', background: AX.surface,
-        borderTopLeftRadius: 28, borderTopRightRadius: 28, padding: '20px 20px 44px',
+      <div onClick={(e) => e.stopPropagation()} style={{ width: '100%', boxSizing: 'border-box',
+        background: AX.surface, borderTopLeftRadius: 28, borderTopRightRadius: 28,
+        padding: '20px 20px 44px', paddingLeft: 'max(20px, env(safe-area-inset-left))',
+        paddingRight: 'max(20px, env(safe-area-inset-right))',
         border: `1px solid ${AX.border}`, display: 'flex', flexDirection: 'column', gap: 14 }}>
         <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 4 }}>
           <span style={{ fontFamily: COND, fontWeight: 700, fontSize: 24, color: AX.text }}>Add Bike</span>
