@@ -3,7 +3,7 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Pressable,
   Platform, Animated,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, UserLocationAnnotation } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
@@ -107,6 +107,8 @@ export default function TrackScreen({ units = 'km' }) {
 
   const mapRef = useRef(null);
   const [region, setRegion] = useState(null);
+  const [coords, setCoords] = useState([]);
+  const coordsRef = useRef([]);
   const startTimeRef = useRef(null);
   const watchIdRef = useRef(null);
   const timerRef = useRef(null);
@@ -128,6 +130,8 @@ export default function TrackScreen({ units = 'km' }) {
   const startRecording = () => {
     haptic('impactMedium');
     startTimeRef.current = Date.now();
+    coordsRef.current = [];
+    setCoords([]);
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
 
     // elapsed timer
@@ -138,7 +142,10 @@ export default function TrackScreen({ units = 'km' }) {
     // GPS watch
     watchIdRef.current = Geolocation.watchPosition(
       (pos) => {
-        const speed = Math.max(0, pos.coords.speed || 0) * 3.6; // m/s → km/h
+        const { latitude, longitude } = pos.coords;
+        const speed = Math.max(0, pos.coords.speed || 0) * 3.6;
+        coordsRef.current = [...coordsRef.current, { latitude, longitude }];
+        setCoords([...coordsRef.current]);
         setSt((s) => {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           const distKm = s.dist + (speed / 3600);
@@ -146,13 +153,10 @@ export default function TrackScreen({ units = 'km' }) {
           const maxSpeed = Math.max(s.maxSpeed, speed);
           return { speed, dist: distKm, elapsed, avg, maxSpeed, maxLean: s.maxLean };
         });
-        // re-center map
         if (mapRef.current) {
           mapRef.current.animateToRegion({
-            latitude: pos.coords.latitude,
-            longitude: pos.coords.longitude,
-            latitudeDelta: 0.005,
-            longitudeDelta: 0.005,
+            latitude, longitude,
+            latitudeDelta: 0.005, longitudeDelta: 0.005,
           }, 500);
         }
       },
@@ -177,6 +181,7 @@ export default function TrackScreen({ units = 'km' }) {
         avgKmh: s.avg,
         maxSpeedKmh: s.maxSpeed,
         maxLean: s.maxLean,
+        coords: coordsRef.current,
       });
     }
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
@@ -206,7 +211,12 @@ export default function TrackScreen({ units = 'km' }) {
           showsCompass={false}
           showsScale={false}
           showsTraffic={false}
-        />
+        >
+          {coords.length > 1 && (
+            <Polyline coordinates={coords} strokeColor={AX.orange}
+              strokeWidth={3} lineCap="round" lineJoin="round" />
+          )}
+        </MapView>
       )}
 
       {/* Dark gradient overlay at bottom */}
