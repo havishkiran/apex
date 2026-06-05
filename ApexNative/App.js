@@ -10,6 +10,7 @@ import TrackScreen from './src/screens/TrackScreen';
 import GarageScreen from './src/screens/GarageScreen';
 import HistoryScreen from './src/screens/HistoryScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import DevicesScreen from './src/screens/DevicesScreen';
 
 const Tab = createBottomTabNavigator();
 
@@ -17,11 +18,13 @@ const TAB_ICONS = {
   Track:    'track',
   Garage:   'garage',
   History:  'history',
+  Devices:  'devices',
   Settings: 'settings',
 };
 
 export default function App() {
   const [units, setUnits] = useState('km');
+  const [gpsSource, setGpsSource] = useState('phone');
   const [tweaks, setTweaks] = useState({
     crashDetect: true, voiceCues: true, safety: true, lockSpeed: 35,
     autoStart: true, autoPause: true,
@@ -90,6 +93,10 @@ export default function App() {
 
           <Tab.Screen name="History">
             {() => <HistoryScreen units={units} />}
+          </Tab.Screen>
+
+          <Tab.Screen name="Devices">
+            {() => <DevicesScreen gpsSource={gpsSource} onSetSource={setGpsSource} />}
           </Tab.Screen>
 
           <Tab.Screen name="Settings">

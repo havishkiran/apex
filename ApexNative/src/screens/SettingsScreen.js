@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   rowSub: { fontFamily: FONTS.saira, fontSize: 12, color: AX.faint, marginTop: 1 },
 
   editInput: { fontFamily: FONTS.saira, fontSize: 15, color: AX.text, borderBottomWidth: 1, borderBottomColor: AX.orange, minWidth: 80 },
-  editValue: { fontFamily: FONTS.saira, fontSize: 15, color: AX.text, borderBottomWidth: 1, borderBottomColor: AX.border, borderStyle: 'dashed' },
+  editValue: { fontFamily: FONTS.saira, fontSize: 15, color: AX.text, borderBottomWidth: 1, borderBottomColor: AX.border },
 
   segmented: { flexDirection: 'row', gap: 2, padding: 2, borderRadius: 11, backgroundColor: AX.bg, borderWidth: 1, borderColor: AX.border2 },
   segBtn: { minWidth: 42, height: 26, paddingHorizontal: 12, borderRadius: 9, alignItems: 'center', justifyContent: 'center' },
