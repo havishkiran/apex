@@ -44,6 +44,8 @@
 	<string>Apex uses Bluetooth to connect to OBD-II adapters, intercoms, and sensors.</string>
 	<key>NSBluetoothPeripheralUsageDescription</key>
 	<string>Apex uses Bluetooth to connect to OBD-II adapters, intercoms, and sensors.</string>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
 	<key>UIBackgroundModes</key>
 	<array>
 		<string>location</string>

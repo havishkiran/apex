@@ -10,6 +10,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import { AX, FONTS } from '../tokens';
 import { saveRide, storage } from '../native/storage';
+import { liveTracking } from '../native/liveTracking';
 
 const HAPTIC = { enableVibrateFallback: true, ignoreAndroidSystemSettings: false };
 function haptic(type = 'impactMedium') {
@@ -204,6 +205,7 @@ export default function TrackScreen({ units = 'km' }) {
     crashCooldownRef.current = false;
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
     KeepAwake.activate();
+    liveTracking.start('Ride', km, startTimeRef.current);
 
     timerRef.current = setInterval(() => {
       setSt((s) => ({ ...s, elapsed: Math.floor((Date.now() - startTimeRef.current) / 1000) }));
@@ -244,7 +246,9 @@ export default function TrackScreen({ units = 'km' }) {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
           const distKm = s.dist + segmentKm;
           const avg = elapsed > 10 ? distKm / (elapsed / 3600) : 0;
-          return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed: Math.max(s.maxSpeed, speedKmh) };
+          const maxSpeed = Math.max(s.maxSpeed, speedKmh);
+          liveTracking.update(speedKmh, distKm, maxSpeed);
+          return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed };
         });
 
         if (mapRef.current) {
@@ -276,6 +280,7 @@ export default function TrackScreen({ units = 'km' }) {
     KeepAwake.deactivate();
     setRecording(false);
     const s = stRef.current;
+    liveTracking.end(s.speed, s.dist, s.maxSpeed);
     if (s.elapsed > 10) {
       await saveRide({
         id: Date.now(),
