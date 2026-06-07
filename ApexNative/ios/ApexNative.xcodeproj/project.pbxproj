@@ -11,7 +11,37 @@
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
+		AA0000000000000000000011 /* ApexLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000002 /* ApexLiveActivity.swift */; };
+		AA0000000000000000000012 /* ApexActivityAttributes.swift in Sources (widget) */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* ApexActivityAttributes.swift */; };
+		AA0000000000000000000013 /* ApexActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000004 /* ApexActivityAttributes.swift */; };
+		AA0000000000000000000014 /* LiveTrackingModule.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000005 /* LiveTrackingModule.swift */; };
+		AA0000000000000000000015 /* LiveTrackingModule.m in Sources */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000006 /* LiveTrackingModule.m */; };
+		AA0000000000000000000016 /* ApexLiveActivity.appex in Embed App Extensions */ = {isa = PBXBuildFile; fileRef = AA0000000000000000000001 /* ApexLiveActivity.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		AA0000000000000000000040 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = AA0000000000000000000050;
+			remoteInfo = ApexLiveActivity;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		AA0000000000000000000033 /* Embed App Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				AA0000000000000000000016 /* ApexLiveActivity.appex in Embed App Extensions */,
+			);
+			name = "Embed App Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* ApexNative.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ApexNative.app; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -23,6 +53,12 @@
 		5DCACB8F33CDC322A6C60F78 /* libPods-ApexNative.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ApexNative.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ApexNative/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = ApexNative/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		AA0000000000000000000001 /* ApexLiveActivity.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ApexLiveActivity.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		AA0000000000000000000002 /* ApexLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ApexLiveActivity.swift; sourceTree = "<group>"; };
+		AA0000000000000000000003 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+		AA0000000000000000000004 /* ApexActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = ApexActivityAttributes.swift; path = ApexNative/ApexActivityAttributes.swift; sourceTree = "<group>"; };
+		AA0000000000000000000005 /* LiveTrackingModule.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = LiveTrackingModule.swift; path = ApexNative/LiveTrackingModule.swift; sourceTree = "<group>"; };
+		AA0000000000000000000006 /* LiveTrackingModule.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; name = LiveTrackingModule.m; path = ApexNative/LiveTrackingModule.m; sourceTree = "<group>"; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
 /* End PBXFileReference section */
 
@@ -35,6 +71,13 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		AA0000000000000000000032 /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
@@ -43,6 +86,9 @@
 			children = (
 				13B07FB51A68108700A75B9A /* Images.xcassets */,
 				761780EC2CA45674006654EE /* AppDelegate.swift */,
+				AA0000000000000000000004 /* ApexActivityAttributes.swift */,
+				AA0000000000000000000005 /* LiveTrackingModule.swift */,
+				AA0000000000000000000006 /* LiveTrackingModule.m */,
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
@@ -70,6 +116,7 @@
 			isa = PBXGroup;
 			children = (
 				13B07FAE1A68108700A75B9A /* ApexNative */,
+				AA0000000000000000000020 /* ApexLiveActivity */,
 				832341AE1AAA6A7D00B99B32 /* Libraries */,
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
@@ -84,8 +131,18 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* ApexNative.app */,
+				AA0000000000000000000001 /* ApexLiveActivity.appex */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		AA0000000000000000000020 /* ApexLiveActivity */ = {
+			isa = PBXGroup;
+			children = (
+				AA0000000000000000000002 /* ApexLiveActivity.swift */,
+				AA0000000000000000000003 /* Info.plist */,
+			);
+			path = ApexLiveActivity;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -111,15 +168,34 @@
 				00DD1BFF1BD5951E006B06BC /* Bundle React Native code and images */,
 				00EEFC60759A1932668264C0 /* [CP] Embed Pods Frameworks */,
 				E235C05ADACE081382539298 /* [CP] Copy Pods Resources */,
+				AA0000000000000000000033 /* Embed App Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				AA0000000000000000000041 /* PBXTargetDependency */,
 			);
 			name = ApexNative;
 			productName = ApexNative;
 			productReference = 13B07F961A680F5B00A75B9A /* ApexNative.app */;
 			productType = "com.apple.product-type.application";
+		};
+		AA0000000000000000000050 /* ApexLiveActivity */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA0000000000000000000060 /* Build configuration list for PBXNativeTarget "ApexLiveActivity" */;
+			buildPhases = (
+				AA0000000000000000000030 /* Sources */,
+				AA0000000000000000000031 /* Resources */,
+				AA0000000000000000000032 /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ApexLiveActivity;
+			productName = ApexLiveActivity;
+			productReference = AA0000000000000000000001 /* ApexLiveActivity.appex */;
+			productType = "com.apple.product-type.app-extension";
 		};
 /* End PBXNativeTarget section */
 
@@ -131,6 +207,9 @@
 				TargetAttributes = {
 					13B07F861A680F5B00A75B9A = {
 						LastSwiftMigration = 1120;
+					};
+					AA0000000000000000000050 = {
+						CreatedOnToolsVersion = 15.0;
 					};
 				};
 			};
@@ -148,6 +227,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* ApexNative */,
+				AA0000000000000000000050 /* ApexLiveActivity */,
 			);
 		};
 /* End PBXProject section */
@@ -159,6 +239,13 @@
 			files = (
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000031 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -245,10 +332,30 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				AA0000000000000000000013 /* ApexActivityAttributes.swift in Sources */,
+				AA0000000000000000000014 /* LiveTrackingModule.swift in Sources */,
+				AA0000000000000000000015 /* LiveTrackingModule.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		AA0000000000000000000030 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				AA0000000000000000000011 /* ApexLiveActivity.swift in Sources */,
+				AA0000000000000000000012 /* ApexActivityAttributes.swift in Sources (widget) */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		AA0000000000000000000041 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = AA0000000000000000000050 /* ApexLiveActivity */;
+			targetProxy = AA0000000000000000000040 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -448,6 +555,52 @@
 			};
 			name = Release;
 		};
+		AA0000000000000000000061 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ApexLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.ApexNative.ApexLiveActivity";
+				PRODUCT_NAME = ApexLiveActivity;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		AA0000000000000000000062 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ApexLiveActivity/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 16.2;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = "org.reactjs.native.example.ApexNative.ApexLiveActivity";
+				PRODUCT_NAME = ApexLiveActivity;
+				SKIP_INSTALL = YES;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -465,6 +618,15 @@
 			buildConfigurations = (
 				83CBBA201A601CBA00E9B192 /* Debug */,
 				83CBBA211A601CBA00E9B192 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA0000000000000000000060 /* Build configuration list for PBXNativeTarget "ApexLiveActivity" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				AA0000000000000000000061 /* Debug */,
+				AA0000000000000000000062 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
