@@ -24,27 +24,51 @@ function Field({ label, value, onChange, placeholder, keyboardType = 'default' }
   );
 }
 
-function AddBikeModal({ visible, units, onSave, onClose }) {
+function BikeFormModal({ visible, units, initial, onSave, onClose }) {
   const km = units === 'km';
+  const isEdit = !!initial;
   const [form, setForm] = useState({
     make: '', model: '', year: String(new Date().getFullYear()),
     cc: '', odo: '', serviceInterval: '5000',
   });
+
+  useEffect(() => {
+    if (visible) {
+      if (initial) {
+        const odoDisp = km
+          ? String(Math.round(initial.odo * 1.60934))
+          : String(Math.round(initial.odo));
+        const svcDisp = km
+          ? String(Math.round((initial.serviceInterval || 5000) * 1.60934))
+          : String(Math.round(initial.serviceInterval || 5000));
+        setForm({
+          make: initial.make || '',
+          model: initial.model || '',
+          year: initial.year || String(new Date().getFullYear()),
+          cc: initial.cc || '',
+          odo: odoDisp,
+          serviceInterval: svcDisp,
+        });
+      } else {
+        setForm({ make: '', model: '', year: String(new Date().getFullYear()), cc: '', odo: '', serviceInterval: '5000' });
+      }
+    }
+  }, [visible, initial]);
+
   const upd = (k) => (v) => setForm((f) => ({ ...f, [k]: v }));
   const valid = form.make.trim() && form.model.trim();
 
   const handleSave = () => {
     if (!valid) return;
     const odoVal = parseFloat(form.odo || '0');
+    const svcVal = parseFloat(form.serviceInterval || '5000');
     onSave({
-      id: Date.now(),
+      ...(initial || { id: Date.now(), rides: 0, image: null }),
       make: form.make.trim(), model: form.model.trim(),
       year: form.year, cc: form.cc.trim(),
       odo: km ? odoVal / 1.60934 : odoVal,
-      serviceInterval: parseFloat(form.serviceInterval || '5000'),
-      rides: 0, image: null,
+      serviceInterval: km ? svcVal / 1.60934 : svcVal,
     });
-    setForm({ make: '', model: '', year: String(new Date().getFullYear()), cc: '', odo: '', serviceInterval: '5000' });
   };
 
   return (
@@ -54,7 +78,7 @@ function AddBikeModal({ visible, units, onSave, onClose }) {
           <Pressable style={styles.modalSheet} onPress={() => {}}>
             <View style={styles.modalHandle} />
             <View style={styles.modalHeader}>
-              <Text style={styles.modalTitle}>Add Bike</Text>
+              <Text style={styles.modalTitle}>{isEdit ? 'Edit Bike' : 'Add Bike'}</Text>
               <TouchableOpacity onPress={onClose} style={styles.modalClose}>
                 <Text style={{ color: AX.dim, fontSize: 18 }}>✕</Text>
               </TouchableOpacity>
@@ -82,7 +106,9 @@ function AddBikeModal({ visible, units, onSave, onClose }) {
             </View>
             <TouchableOpacity onPress={handleSave} disabled={!valid}
               style={[styles.saveBtn, !valid && styles.saveBtnDisabled]}>
-              <Text style={[styles.saveBtnText, !valid && { color: AX.dim }]}>Save Bike</Text>
+              <Text style={[styles.saveBtnText, !valid && { color: AX.dim }]}>
+                {isEdit ? 'Update Bike' : 'Save Bike'}
+              </Text>
             </TouchableOpacity>
           </Pressable>
         </KeyboardAvoidingView>
@@ -91,11 +117,10 @@ function AddBikeModal({ visible, units, onSave, onClose }) {
   );
 }
 
-function BikeCard({ bike, active, units, onActivate, onDelete }) {
+function BikeCard({ bike, active, units, onActivate, onEdit, onDelete }) {
   const km = units === 'km';
   const odoDisp = Math.round(km ? bike.odo * 1.60934 : bike.odo).toLocaleString();
   const unit = km ? 'km' : 'mi';
-  const svcInterval = km ? (bike.serviceInterval || 5000) * 1.60934 : (bike.serviceInterval || 5000);
   const svcPct = Math.min(1, (bike.odo || 0) / (bike.serviceInterval || 5000));
   const svcPctDisp = Math.round(svcPct * 100);
 
@@ -115,14 +140,19 @@ function BikeCard({ bike, active, units, onActivate, onDelete }) {
           </View>
           {bike.cc ? <Text style={styles.bikeSub}>{bike.cc}</Text> : null}
         </View>
-        <TouchableOpacity onPress={() => {
-          Alert.alert('Remove Bike', `Remove ${bike.make} ${bike.model}?`, [
-            { text: 'Cancel', style: 'cancel' },
-            { text: 'Remove', style: 'destructive', onPress: onDelete },
-          ]);
-        }} style={styles.deleteBtn}>
-          <Text style={{ color: AX.faint, fontSize: 16 }}>🗑</Text>
-        </TouchableOpacity>
+        <View style={styles.cardActions}>
+          <TouchableOpacity onPress={onEdit} style={styles.cardActionBtn}>
+            <Text style={{ color: AX.dim, fontSize: 16 }}>✏️</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => {
+            Alert.alert('Remove Bike', `Remove ${bike.make} ${bike.model}?`, [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Remove', style: 'destructive', onPress: onDelete },
+            ]);
+          }} style={styles.cardActionBtn}>
+            <Text style={{ color: AX.faint, fontSize: 16 }}>🗑</Text>
+          </TouchableOpacity>
+        </View>
       </View>
 
       <View style={styles.bikeStats}>
@@ -150,6 +180,7 @@ export default function GarageScreen({ units = 'km' }) {
   const [bikes, setBikes] = useState([]);
   const [activeId, setActiveId] = useState(null);
   const [showAdd, setShowAdd] = useState(false);
+  const [editingBike, setEditingBike] = useState(null);
 
   useEffect(() => {
     storage.getBikes().then((saved) => {
@@ -171,6 +202,12 @@ export default function GarageScreen({ units = 'km' }) {
     if (bikes.length === 0) setActiveId(bike.id);
     persist(updated, aid);
     setShowAdd(false);
+  };
+
+  const handleEdit = (updated) => {
+    const list = bikes.map(b => b.id === updated.id ? updated : b);
+    persist(list, activeId);
+    setEditingBike(null);
   };
 
   const handleDelete = (id) => {
@@ -205,13 +242,16 @@ export default function GarageScreen({ units = 'km' }) {
             {bikes.map(b => (
               <BikeCard key={b.id} bike={b} active={b.id === activeId} units={units}
                 onActivate={() => { setActiveId(b.id); persist(bikes, b.id); }}
+                onEdit={() => setEditingBike(b)}
                 onDelete={() => handleDelete(b.id)} />
             ))}
           </>
         )}
       </ScrollView>
 
-      <AddBikeModal visible={showAdd} units={units} onSave={handleAdd} onClose={() => setShowAdd(false)} />
+      <BikeFormModal visible={showAdd} units={units} onSave={handleAdd} onClose={() => setShowAdd(false)} />
+      <BikeFormModal visible={!!editingBike} units={units} initial={editingBike}
+        onSave={handleEdit} onClose={() => setEditingBike(null)} />
     </View>
   );
 }
@@ -253,7 +293,8 @@ const styles = StyleSheet.create({
   activeDot: { width: 6, height: 6, borderRadius: 3, backgroundColor: AX.orange },
   activeBadgeText: { fontFamily: FONTS.sairaBold, fontSize: 10, color: AX.orange,
     letterSpacing: 1, textTransform: 'uppercase' },
-  deleteBtn: { padding: 4 },
+  cardActions: { flexDirection: 'row', gap: 4 },
+  cardActionBtn: { padding: 6 },
   bikeStats: { flexDirection: 'row', alignItems: 'center', marginBottom: 12 },
   statBox: { flex: 1, alignItems: 'center' },
   statValue: { fontFamily: FONTS.cond, fontSize: 28, color: AX.text },

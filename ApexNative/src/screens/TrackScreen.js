@@ -147,6 +147,7 @@ export default function TrackScreen({ units = 'km' }) {
   const crashCooldownRef = useRef(false);
   const [emergency, setEmergency] = useState(null);
 
+  const speedSmoothRef = useRef(0);
   const startTimeRef = useRef(null);
   const watchIdRef = useRef(null);
   const timerRef = useRef(null);
@@ -197,6 +198,7 @@ export default function TrackScreen({ units = 'km' }) {
     startTimeRef.current = Date.now();
     coordsRef.current = [];
     lastPosRef.current = null;
+    speedSmoothRef.current = 0;
     setCoords([]);
     crashCooldownRef.current = false;
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
@@ -207,21 +209,28 @@ export default function TrackScreen({ units = 'km' }) {
 
     watchIdRef.current = Geolocation.watchPosition(
       (pos) => {
-        const { latitude, longitude } = pos.coords;
+        const { latitude, longitude, accuracy } = pos.coords;
         const now = Date.now();
 
-        // Haversine distance from last fix — reliable regardless of GPS speed field
         let segmentKm = 0;
-        let speedKmh = 0;
+        let speedKmh = speedSmoothRef.current;
+
         if (lastPosRef.current) {
           const d = haversineKm(
             lastPosRef.current.latitude, lastPosRef.current.longitude,
             latitude, longitude
           );
-          if (d < 0.15) { // ignore GPS jumps > 150m (noise filter)
+          const timeDeltaMs = now - lastPosRef.current.time;
+          const timeDeltaHrs = timeDeltaMs / 3600000;
+
+          // Require ≥1s between fixes, movement < 300m, GPS accuracy < 30m
+          if (timeDeltaMs >= 1000 && d < 0.3 && (accuracy == null || accuracy < 30)) {
             segmentKm = d;
-            const timeDeltaHrs = (now - lastPosRef.current.time) / 3600000;
-            if (timeDeltaHrs > 0) speedKmh = segmentKm / timeDeltaHrs;
+            const rawSpeed = timeDeltaHrs > 0 ? d / timeDeltaHrs : 0;
+            const capped = Math.min(rawSpeed, 220); // motorcycle hard cap
+            // EMA smoothing: decays naturally to 0 when stationary
+            speedSmoothRef.current = speedSmoothRef.current * 0.5 + capped * 0.5;
+            speedKmh = speedSmoothRef.current;
           }
         }
         lastPosRef.current = { latitude, longitude, time: now };

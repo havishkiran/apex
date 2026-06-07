@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
+  TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
 import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -73,8 +74,10 @@ function RideRow({ ride, units, onPress, onDelete }) {
   );
 }
 
-function RideDetail({ ride, units, onClose }) {
+function RideDetail({ ride, units, onClose, onRename }) {
   const insets = useSafeAreaInsets();
+  const [renaming, setRenaming] = useState(false);
+  const [nameText, setNameText] = useState('');
   const km = units === 'km';
   const region = boundsFromCoords(ride.coords);
   const dist = km ? ride.distKm?.toFixed(2) : (ride.distKm / 1.60934)?.toFixed(2);
@@ -83,17 +86,51 @@ function RideDetail({ ride, units, onClose }) {
   const su = km ? 'km/h' : 'mph';
   const du = km ? 'km' : 'mi';
 
+  const openRename = () => {
+    setNameText(ride.route || '');
+    setRenaming(true);
+  };
+
+  const saveRename = () => {
+    const name = nameText.trim();
+    if (name) onRename(name);
+    setRenaming(false);
+  };
+
   return (
     <View style={[styles.detailContainer, { paddingTop: insets.top }]}>
+      {/* Rename modal */}
+      <Modal visible={renaming} transparent animationType="fade" statusBarTranslucent>
+        <KeyboardAvoidingView style={styles.renameOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+          <View style={styles.renameCard}>
+            <Text style={styles.renameTitle}>Rename Ride</Text>
+            <TextInput
+              value={nameText} onChangeText={setNameText}
+              placeholder="Ride name…" placeholderTextColor={AX.faint}
+              style={styles.renameInput}
+              autoFocus returnKeyType="done" onSubmitEditing={saveRename}
+            />
+            <View style={styles.renameActions}>
+              <TouchableOpacity onPress={() => setRenaming(false)} style={styles.renameCancelBtn}>
+                <Text style={styles.renameCancelText}>Cancel</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={saveRename} style={styles.renameSaveBtn}>
+                <Text style={styles.renameSaveText}>Save</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        </KeyboardAvoidingView>
+      </Modal>
+
       {/* Header */}
       <View style={styles.detailHeader}>
         <TouchableOpacity onPress={onClose} style={styles.backBtn}>
           <Glyph name="back" size={20} color={AX.text} sw={2} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
+        <TouchableOpacity style={{ flex: 1 }} onPress={openRename} activeOpacity={0.7}>
           <Text style={styles.detailTitle}>{ride.route || 'Untitled Ride'}</Text>
-          <Text style={styles.detailDate}>{ride.date}</Text>
-        </View>
+          <Text style={styles.detailDate}>{ride.date} · tap to rename</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Map */}
@@ -156,6 +193,13 @@ export default function HistoryScreen({ units = 'km' }) {
     await storage.saveRides(updated);
   };
 
+  const renameRide = async (id, name) => {
+    const updated = rides.map(r => r.id === id ? { ...r, route: name } : r);
+    setRides(updated);
+    setSelectedRide(prev => prev ? { ...prev, route: name } : prev);
+    await storage.saveRides(updated);
+  };
+
   const totalDistKm = rides.reduce((s, r) => s + (r.distKm || 0), 0);
   const totalSec = rides.reduce((s, r) => s + (r.elapsed || 0), 0);
   const topSpeedKmh = rides.reduce((m, r) => Math.max(m, r.maxSpeedKmh || 0), 0);
@@ -199,7 +243,9 @@ export default function HistoryScreen({ units = 'km' }) {
 
       <Modal visible={!!selectedRide} animationType="slide" statusBarTranslucent>
         {selectedRide && (
-          <RideDetail ride={selectedRide} units={units} onClose={() => setSelectedRide(null)} />
+          <RideDetail ride={selectedRide} units={units}
+            onClose={() => setSelectedRide(null)}
+            onRename={(name) => renameRide(selectedRide.id, name)} />
         )}
       </Modal>
     </View>
@@ -253,6 +299,31 @@ const styles = StyleSheet.create({
   },
   detailTitle: { fontFamily: FONTS.cond, fontSize: 24, color: AX.text, letterSpacing: -0.3 },
   detailDate: { fontFamily: FONTS.saira, fontSize: 12, color: AX.faint, marginTop: 1 },
+  renameOverlay: {
+    flex: 1, backgroundColor: 'rgba(0,0,0,0.7)',
+    alignItems: 'center', justifyContent: 'center', padding: 24,
+  },
+  renameCard: {
+    width: '100%', backgroundColor: AX.surface, borderRadius: 20,
+    padding: 24, gap: 16, borderWidth: 1, borderColor: AX.border2,
+  },
+  renameTitle: { fontFamily: FONTS.cond, fontSize: 22, color: AX.text },
+  renameInput: {
+    backgroundColor: AX.bg, borderWidth: 1, borderColor: AX.border, borderRadius: 12,
+    paddingHorizontal: 14, paddingVertical: 12,
+    fontFamily: FONTS.saira, fontSize: 16, color: AX.text,
+  },
+  renameActions: { flexDirection: 'row', gap: 10 },
+  renameCancelBtn: {
+    flex: 1, height: 46, borderRadius: 12, backgroundColor: AX.bg,
+    borderWidth: 1, borderColor: AX.border, alignItems: 'center', justifyContent: 'center',
+  },
+  renameCancelText: { fontFamily: FONTS.sairaBold, fontSize: 14, color: AX.dim },
+  renameSaveBtn: {
+    flex: 1, height: 46, borderRadius: 12, backgroundColor: AX.orange,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  renameSaveText: { fontFamily: FONTS.sairaBold, fontSize: 14, color: '#0C0D10' },
   detailMap: { height: 320, backgroundColor: AX.surface },
   noMap: { alignItems: 'center', justifyContent: 'center', gap: 10 },
   noMapText: { fontFamily: FONTS.saira, fontSize: 13, color: AX.ghost },
