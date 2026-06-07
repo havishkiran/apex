@@ -208,20 +208,23 @@ export default function TrackScreen({ units = 'km' }) {
     watchIdRef.current = Geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        const rawSpeed = pos.coords.speed ?? -1;
-        const speedKmh = rawSpeed >= 0 ? rawSpeed * 3.6 : 0;
+        const now = Date.now();
 
         // Haversine distance from last fix — reliable regardless of GPS speed field
         let segmentKm = 0;
+        let speedKmh = 0;
         if (lastPosRef.current) {
           const d = haversineKm(
             lastPosRef.current.latitude, lastPosRef.current.longitude,
             latitude, longitude
           );
-          // ignore GPS jumps > 150m per fix (noise filter)
-          if (d < 0.15) segmentKm = d;
+          if (d < 0.15) { // ignore GPS jumps > 150m (noise filter)
+            segmentKm = d;
+            const timeDeltaHrs = (now - lastPosRef.current.time) / 3600000;
+            if (timeDeltaHrs > 0) speedKmh = segmentKm / timeDeltaHrs;
+          }
         }
-        lastPosRef.current = { latitude, longitude };
+        lastPosRef.current = { latitude, longitude, time: now };
 
         coordsRef.current = [...coordsRef.current, { latitude, longitude }];
         setCoords([...coordsRef.current]);
