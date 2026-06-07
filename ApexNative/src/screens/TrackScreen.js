@@ -15,6 +15,15 @@ function haptic(type = 'impactMedium') {
   ReactNativeHapticFeedback.trigger(type, HAPTIC);
 }
 
+function haversineKm(lat1, lon1, lat2, lon2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLon = (lon2 - lon1) * Math.PI / 180;
+  const a = Math.sin(dLat / 2) ** 2 +
+    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
 function fmtTime(s) {
   const h = Math.floor(s / 3600);
   const m = Math.floor((s % 3600) / 60);
@@ -129,6 +138,7 @@ export default function TrackScreen({ units = 'km' }) {
   const [region, setRegion] = useState(null);
   const [coords, setCoords] = useState([]);
   const coordsRef = useRef([]);
+  const lastPosRef = useRef(null);
 
   const [leanAngle, setLeanAngle] = useState(0);
   const leanRef = useRef(0);
@@ -186,6 +196,7 @@ export default function TrackScreen({ units = 'km' }) {
     haptic('impactMedium');
     startTimeRef.current = Date.now();
     coordsRef.current = [];
+    lastPosRef.current = null;
     setCoords([]);
     crashCooldownRef.current = false;
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
@@ -197,15 +208,31 @@ export default function TrackScreen({ units = 'km' }) {
     watchIdRef.current = Geolocation.watchPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
-        const speed = Math.max(0, pos.coords.speed || 0) * 3.6;
+        const rawSpeed = pos.coords.speed ?? -1;
+        const speedKmh = rawSpeed >= 0 ? rawSpeed * 3.6 : 0;
+
+        // Haversine distance from last fix — reliable regardless of GPS speed field
+        let segmentKm = 0;
+        if (lastPosRef.current) {
+          const d = haversineKm(
+            lastPosRef.current.latitude, lastPosRef.current.longitude,
+            latitude, longitude
+          );
+          // ignore GPS jumps > 150m per fix (noise filter)
+          if (d < 0.15) segmentKm = d;
+        }
+        lastPosRef.current = { latitude, longitude };
+
         coordsRef.current = [...coordsRef.current, { latitude, longitude }];
         setCoords([...coordsRef.current]);
+
         setSt((s) => {
           const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-          const distKm = s.dist + (speed / 3600);
-          const avg = elapsed > 0 ? distKm / (elapsed / 3600) : 0;
-          return { ...s, speed, dist: distKm, elapsed, avg, maxSpeed: Math.max(s.maxSpeed, speed) };
+          const distKm = s.dist + segmentKm;
+          const avg = elapsed > 10 ? distKm / (elapsed / 3600) : 0;
+          return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed: Math.max(s.maxSpeed, speedKmh) };
         });
+
         if (mapRef.current) {
           mapRef.current.animateToRegion(
             { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500
@@ -213,7 +240,7 @@ export default function TrackScreen({ units = 'km' }) {
         }
       },
       () => {},
-      { enableHighAccuracy: true, distanceFilter: 5, interval: 1000, fastestInterval: 500 }
+      { enableHighAccuracy: true, distanceFilter: 0, interval: 2000, fastestInterval: 1000 }
     );
 
     startAccelerometer();
