@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, Animated,
 } from 'react-native';
+import KeepAwake from 'react-native-keep-awake';
 import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import { accelerometer, setUpdateIntervalForType, SensorTypes } from 'react-native-sensors';
@@ -154,7 +155,7 @@ export default function TrackScreen({ units = 'km' }) {
   const km = units === 'km';
 
   useEffect(() => {
-    Geolocation.requestAuthorization();
+    Geolocation.requestAuthorization('always');
     Geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
@@ -202,6 +203,7 @@ export default function TrackScreen({ units = 'km' }) {
     setCoords([]);
     crashCooldownRef.current = false;
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+    KeepAwake.activate();
 
     timerRef.current = setInterval(() => {
       setSt((s) => ({ ...s, elapsed: Math.floor((Date.now() - startTimeRef.current) / 1000) }));
@@ -252,7 +254,14 @@ export default function TrackScreen({ units = 'km' }) {
         }
       },
       () => {},
-      { enableHighAccuracy: true, distanceFilter: 0, interval: 2000, fastestInterval: 1000 }
+      {
+        enableHighAccuracy: true,
+        distanceFilter: 0,
+        interval: 2000,
+        fastestInterval: 1000,
+        pausesLocationUpdatesAutomatically: false,
+        showsBackgroundLocationIndicator: true,
+      }
     );
 
     startAccelerometer();
@@ -264,6 +273,7 @@ export default function TrackScreen({ units = 'km' }) {
     clearInterval(timerRef.current);
     Geolocation.clearWatch(watchIdRef.current);
     stopAccelerometer();
+    KeepAwake.deactivate();
     setRecording(false);
     const s = stRef.current;
     if (s.elapsed > 10) {
@@ -402,7 +412,7 @@ const styles = StyleSheet.create({
   },
   heroRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
   heroMetric: { flexDirection: 'row', alignItems: 'flex-end', gap: 10 },
-  heroValue: { fontFamily: FONTS.cond, fontSize: 104, lineHeight: 88, color: AX.text, letterSpacing: -1 },
+  heroValue: { fontFamily: FONTS.cond, fontSize: 104, lineHeight: 106, color: AX.text, letterSpacing: -1 },
   heroMeta: { flexDirection: 'column', gap: 2, marginBottom: 10 },
   heroUnit: { fontFamily: FONTS.sairaBold, fontSize: 17, letterSpacing: 1, textTransform: 'uppercase', color: AX.dim },
   heroLabel: { fontFamily: FONTS.sairaBold, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: AX.faint },
@@ -413,7 +423,7 @@ const styles = StyleSheet.create({
   metric: { flex: 1, gap: 5 },
   metricLabel: { fontFamily: FONTS.sairaBold, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: AX.faint },
   metricRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  metricValue: { fontFamily: FONTS.cond, fontSize: 30, lineHeight: 30, color: AX.text },
+  metricValue: { fontFamily: FONTS.cond, fontSize: 30, lineHeight: 34, color: AX.text },
   metricUnit: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.dim, textTransform: 'uppercase', marginBottom: 2 },
 
   recBtn: {
@@ -448,7 +458,7 @@ const styles = StyleSheet.create({
   crashIconRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   crashDot: { width: 10, height: 10, borderRadius: 5, backgroundColor: 'rgba(255,60,50,0.9)' },
   crashLabel: { fontFamily: FONTS.sairaBold, fontSize: 13, color: 'rgba(255,80,60,0.9)', letterSpacing: 2 },
-  crashCountdown: { fontFamily: FONTS.cond, fontSize: 88, lineHeight: 80, color: AX.text, letterSpacing: -1 },
+  crashCountdown: { fontFamily: FONTS.cond, fontSize: 88, lineHeight: 92, color: AX.text, letterSpacing: -1 },
   crashSub: { fontFamily: FONTS.saira, fontSize: 14, color: AX.dim, textAlign: 'center', lineHeight: 20 },
   crashBtn: {
     marginTop: 8, width: '100%', height: 52, borderRadius: 26,

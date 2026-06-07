@@ -43,7 +43,8 @@ function StatCard({ label, value, unit }) {
 function RideRow({ ride, units, onPress, onDelete }) {
   const km = units === 'km';
   const dist = km ? ride.distKm?.toFixed(1) : (ride.distKm / 1.60934)?.toFixed(1);
-  const top = km ? Math.round(ride.maxSpeedKmh) : Math.round(ride.maxSpeedKmh / 1.60934);
+  const safeTop = Math.min(ride.maxSpeedKmh || 0, 300);
+  const top = km ? Math.round(safeTop) : Math.round(safeTop / 1.60934);
   const su = km ? 'km/h' : 'mph';
   const du = km ? 'km' : 'mi';
 
@@ -81,7 +82,8 @@ function RideDetail({ ride, units, onClose, onRename }) {
   const km = units === 'km';
   const region = boundsFromCoords(ride.coords);
   const dist = km ? ride.distKm?.toFixed(2) : (ride.distKm / 1.60934)?.toFixed(2);
-  const top = km ? Math.round(ride.maxSpeedKmh) : Math.round(ride.maxSpeedKmh / 1.60934);
+  const safeTop = Math.min(ride.maxSpeedKmh || 0, 300);
+  const top = km ? Math.round(safeTop) : Math.round(safeTop / 1.60934);
   const avg = km ? Math.round(ride.avgKmh) : Math.round(ride.avgKmh / 1.60934);
   const su = km ? 'km/h' : 'mph';
   const du = km ? 'km' : 'mi';
@@ -163,15 +165,19 @@ function RideDetail({ ride, units, onClose, onRename }) {
 
       {/* Stats */}
       <ScrollView contentContainerStyle={[styles.detailStats, { paddingBottom: insets.bottom + 24 }]}>
-        <View style={styles.detailStatsGrid}>
+        <View style={styles.detailStatsRow}>
           <StatCard label="Distance" value={dist} unit={du} />
           <StatCard label="Duration" value={fmtDur(ride.elapsed)} />
+        </View>
+        <View style={styles.detailStatsRow}>
           <StatCard label="Top Speed" value={top} unit={su} />
           <StatCard label="Avg Speed" value={avg} unit={su} />
-          {ride.maxLean > 0 && (
-            <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />
-          )}
         </View>
+        {ride.maxLean > 0 && (
+          <View style={styles.detailStatsRow}>
+            <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />
+          </View>
+        )}
       </ScrollView>
     </View>
   );
@@ -202,7 +208,7 @@ export default function HistoryScreen({ units = 'km' }) {
 
   const totalDistKm = rides.reduce((s, r) => s + (r.distKm || 0), 0);
   const totalSec = rides.reduce((s, r) => s + (r.elapsed || 0), 0);
-  const topSpeedKmh = rides.reduce((m, r) => Math.max(m, r.maxSpeedKmh || 0), 0);
+  const topSpeedKmh = rides.reduce((m, r) => Math.max(m, Math.min(r.maxSpeedKmh || 0, 300)), 0);
 
   const distDisp = km ? totalDistKm.toFixed(0) : (totalDistKm / 1.60934).toFixed(0);
   const distUnit = km ? 'km' : 'mi';
@@ -327,6 +333,6 @@ const styles = StyleSheet.create({
   detailMap: { height: 320, backgroundColor: AX.surface },
   noMap: { alignItems: 'center', justifyContent: 'center', gap: 10 },
   noMapText: { fontFamily: FONTS.saira, fontSize: 13, color: AX.ghost },
-  detailStats: { padding: 16 },
-  detailStatsGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 10 },
+  detailStats: { padding: 16, gap: 10 },
+  detailStatsRow: { flexDirection: 'row', gap: 10 },
 });
