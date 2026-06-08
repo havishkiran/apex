@@ -1,11 +1,21 @@
 import Foundation
 import ActivityKit
 
+// Match React Native's ObjC block types without needing the React headers in Swift
+typealias RCTPromiseResolveBlock = (Any?) -> Void
+typealias RCTPromiseRejectBlock = (String?, String?, Error?) -> Void
+
 @objc(LiveTrackingModule)
 class LiveTrackingModule: NSObject {
 
+    // Stored as Any? to avoid @available restriction; cast when accessed
+    private var activityHolder: Any? = nil
+
     @available(iOS 16.2, *)
-    private var activity: Activity<ApexRideAttributes>?
+    private var activity: Activity<ApexRideAttributes>? {
+        get { activityHolder as? Activity<ApexRideAttributes> }
+        set { activityHolder = newValue }
+    }
 
     @objc func startActivity(
         _ rideName: String,
@@ -61,9 +71,12 @@ class LiveTrackingModule: NSObject {
             startDate: current.content.state.startDate
         )
         Task {
-            await current.end(ActivityContent(state: state, staleDate: Date()), dismissalPolicy: .after(.now + 300))
+            await current.end(
+                ActivityContent(state: state, staleDate: Date()),
+                dismissalPolicy: .after(.now + 300)
+            )
         }
-        activity = nil
+        activityHolder = nil
     }
 
     @objc static func requiresMainQueueSetup() -> Bool { return false }
