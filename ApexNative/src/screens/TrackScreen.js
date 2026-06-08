@@ -156,7 +156,8 @@ export default function TrackScreen({ units = 'km' }) {
   const km = units === 'km';
 
   useEffect(() => {
-    Geolocation.requestAuthorization('always');
+    Geolocation.setRNConfiguration({ authorizationLevel: 'always' });
+    Geolocation.requestAuthorization(() => {}, () => {});
     Geolocation.getCurrentPosition(
       (pos) => {
         const { latitude, longitude } = pos.coords;
