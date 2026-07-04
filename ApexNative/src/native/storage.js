@@ -22,6 +22,8 @@ export const storage = {
   saveSettings:  (v) => set('apex_settings', v),
   getRides:      () => get('apex_rides', []),
   saveRides:     (v) => set('apex_rides', v),
+  getGroups:     () => get('apex_groups', []),
+  saveGroups:    (v) => set('apex_groups', v),
 };
 
 export async function saveRide(ride) {
