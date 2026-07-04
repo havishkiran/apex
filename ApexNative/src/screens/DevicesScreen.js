@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity,
-  FlatList, Platform, Alert,
+  FlatList, Platform, Alert, Linking,
 } from 'react-native';
 import { BleManager, State } from 'react-native-ble-plx';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -210,9 +210,31 @@ export default function DevicesScreen({ gpsSource = 'phone', onSetSource }) {
           ))}
         </View>
 
-        {/* Bluetooth */}
+        {/* Helmet Audio */}
+        <View style={styles.sectionRow}>
+          <Glyph name="bell" size={13} color={AX.faint} sw={1.8} />
+          <Text style={styles.sectionLabel}>Helmet Audio</Text>
+        </View>
+        <View style={[styles.helmetCard, { marginBottom: 24 }]}>
+          <View style={styles.helmetIconWrap}>
+            <Text style={{ fontSize: 26 }}>🪖</Text>
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.helmetTitle}>Classic Bluetooth Audio</Text>
+            <Text style={styles.helmetSub}>
+              Helmet intercoms (Sena, Cardo, FreedConn, etc.) use Classic Bluetooth for audio — they pair through iOS Settings, not in-app scanning.
+            </Text>
+            <TouchableOpacity
+              onPress={() => Linking.openURL('App-Prefs:root=Bluetooth')}
+              style={styles.helmetBtn}>
+              <Text style={styles.helmetBtnText}>Open Bluetooth Settings →</Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        {/* BLE Devices */}
         <View style={[styles.sectionRow, { justifyContent: 'space-between', marginBottom: 14 }]}>
-          <Text style={styles.sectionLabel}>Bluetooth</Text>
+          <Text style={styles.sectionLabel}>Sensors & Adapters</Text>
           <TouchableOpacity onPress={toggleScan} style={[styles.scanBtn,
             scanning && styles.scanBtnActive]}>
             {scanning
@@ -258,7 +280,7 @@ export default function DevicesScreen({ gpsSource = 'phone', onSetSource }) {
           </View>
         )}
 
-        <Text style={styles.footer}>OBD-II · Helmet intercoms · Heart rate · Tire pressure</Text>
+        <Text style={styles.footer}>BLE Scan: OBD-II · Heart rate · Tire pressure{'\n'}Audio: pair helmet via iOS Settings → Bluetooth</Text>
       </ScrollView>
     </View>
   );
@@ -353,4 +375,23 @@ const styles = StyleSheet.create({
 
   footer: { fontFamily: FONTS.saira, fontSize: 11.5, color: AX.faint,
     textAlign: 'center', marginTop: 16, lineHeight: 20 },
+
+  helmetCard: {
+    flexDirection: 'row', gap: 14, padding: 16,
+    backgroundColor: AX.surface, borderRadius: 18,
+    borderWidth: 1, borderColor: AX.border2,
+  },
+  helmetIconWrap: {
+    width: 50, height: 50, borderRadius: 14, backgroundColor: AX.bg,
+    borderWidth: 1, borderColor: AX.border2,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  helmetTitle: { fontFamily: FONTS.sairaBold, fontSize: 15, color: AX.text, marginBottom: 5 },
+  helmetSub: { fontFamily: FONTS.saira, fontSize: 12.5, color: AX.dim, lineHeight: 18, marginBottom: 10 },
+  helmetBtn: {
+    alignSelf: 'flex-start', paddingHorizontal: 12, paddingVertical: 6,
+    borderRadius: 12, backgroundColor: 'rgba(255,107,26,0.12)',
+    borderWidth: 1, borderColor: 'rgba(255,107,26,0.3)',
+  },
+  helmetBtnText: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.orange },
 });
