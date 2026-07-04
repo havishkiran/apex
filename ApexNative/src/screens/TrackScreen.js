@@ -34,10 +34,10 @@ function fmtTime(s) {
   return h ? `${h}:${p(m)}:${p(sec)}` : `${m}:${p(sec)}`;
 }
 
-function RecPill({ recording }) {
+function RecPill({ recording, paused }) {
   const pulse = useRef(new Animated.Value(1)).current;
   useEffect(() => {
-    if (!recording) { pulse.setValue(1); return; }
+    if (!recording || paused) { pulse.setValue(1); return; }
     const anim = Animated.loop(
       Animated.sequence([
         Animated.timing(pulse, { toValue: 0.2, duration: 700, useNativeDriver: true }),
@@ -46,15 +46,16 @@ function RecPill({ recording }) {
     );
     anim.start();
     return () => anim.stop();
-  }, [recording]);
+  }, [recording, paused]);
+
+  const label = paused ? 'PAUSED' : recording ? 'REC' : 'READY';
+  const dotColor = paused ? AX.dim : recording ? AX.orange : AX.faint;
+  const textColor = recording ? AX.text : AX.dim;
 
   return (
     <View style={styles.pill}>
-      <Animated.View style={[styles.pillDot, { opacity: pulse,
-        backgroundColor: recording ? AX.orange : AX.faint }]} />
-      <Text style={[styles.pillText, { color: recording ? AX.text : AX.dim }]}>
-        {recording ? 'REC' : 'READY'}
-      </Text>
+      <Animated.View style={[styles.pillDot, { opacity: pulse, backgroundColor: dotColor }]} />
+      <Text style={[styles.pillText, { color: textColor }]}>{label}</Text>
     </View>
   );
 }
@@ -71,7 +72,7 @@ function Metric({ label, value, unit }) {
   );
 }
 
-function RecordButton({ recording, onPress }) {
+function MainButton({ recording, paused, onPress }) {
   const scale = useRef(new Animated.Value(1)).current;
 
   const handlePress = () => {
@@ -82,11 +83,25 @@ function RecordButton({ recording, onPress }) {
     onPress();
   };
 
+  const isActive = recording && !paused;
+
   return (
     <Pressable onPress={handlePress}>
       <Animated.View style={{ transform: [{ scale }] }}>
-        <View style={[styles.recBtn, recording && styles.recBtnActive]}>
-          {recording ? <View style={styles.stopIcon} /> : <View style={styles.playIcon} />}
+        <View style={[styles.recBtn, isActive && styles.recBtnActive]}>
+          {isActive ? (
+            // Pause icon: two vertical bars
+            <View style={styles.pauseIcon}>
+              <View style={styles.pauseBar} />
+              <View style={styles.pauseBar} />
+            </View>
+          ) : recording && paused ? (
+            // Resume: play icon in orange outline
+            <View style={styles.playIcon} />
+          ) : (
+            // Start: play icon
+            <View style={styles.playIcon} />
+          )}
         </View>
       </Animated.View>
     </Pressable>
@@ -132,6 +147,7 @@ function CrashModal({ visible, emergency, onDismiss }) {
 export default function TrackScreen({ units = 'km' }) {
   const insets = useSafeAreaInsets();
   const [recording, setRecording] = useState(false);
+  const [paused, setPaused] = useState(false);
   const [st, setSt] = useState({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
   const stRef = useRef(st);
   stRef.current = st;
@@ -151,9 +167,17 @@ export default function TrackScreen({ units = 'km' }) {
 
   const speedSmoothRef = useRef(0);
   const startTimeRef = useRef(null);
+  const pausedDurationRef = useRef(0);  // total ms spent paused
+  const pauseStartRef = useRef(null);   // timestamp when current pause began
   const watchIdRef = useRef(null);
   const timerRef = useRef(null);
   const km = units === 'km';
+
+  const getActiveElapsed = () => {
+    const committed = pausedDurationRef.current;
+    const current = pauseStartRef.current ? Date.now() - pauseStartRef.current : 0;
+    return Math.floor((Date.now() - startTimeRef.current - committed - current) / 1000);
+  };
 
   useEffect(() => {
     Geolocation.setRNConfiguration({ authorizationLevel: 'always' });
@@ -173,14 +197,12 @@ export default function TrackScreen({ units = 'km' }) {
     try {
       setUpdateIntervalForType(SensorTypes.accelerometer, 100);
       accelSubRef.current = accelerometer.subscribe(({ x, y, z }) => {
-        // Lean angle: phone tilt from vertical (x-axis roll)
         const raw = Math.atan2(x, Math.sqrt(y * y + z * z)) * (180 / Math.PI);
         leanRef.current = leanRef.current * 0.75 + raw * 0.25;
         const abs = Math.abs(Math.round(leanRef.current));
         setLeanAngle(abs);
         setSt(s => ({ ...s, maxLean: Math.max(s.maxLean, abs) }));
 
-        // Crash detection: sudden high G-force spike (> 5g)
         const gTotal = Math.sqrt(x * x + y * y + z * z) / 9.81;
         if (gTotal > 5 && !crashCooldownRef.current) {
           crashCooldownRef.current = true;
@@ -196,68 +218,53 @@ export default function TrackScreen({ units = 'km' }) {
     accelSubRef.current = null;
   };
 
-  const startRecording = () => {
-    haptic('impactMedium');
-    startTimeRef.current = Date.now();
-    coordsRef.current = [];
-    lastPosRef.current = null;
-    speedSmoothRef.current = 0;
-    setCoords([]);
-    crashCooldownRef.current = false;
-    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
-    KeepAwake.activate();
-    liveTracking.start('Ride', km, startTimeRef.current);
+  const buildGpsCallback = () => (pos) => {
+    const { latitude, longitude, accuracy } = pos.coords;
+    const now = Date.now();
 
-    timerRef.current = setInterval(() => {
-      setSt((s) => ({ ...s, elapsed: Math.floor((Date.now() - startTimeRef.current) / 1000) }));
-    }, 1000);
+    let segmentKm = 0;
+    let speedKmh = speedSmoothRef.current;
 
+    if (lastPosRef.current) {
+      const d = haversineKm(
+        lastPosRef.current.latitude, lastPosRef.current.longitude,
+        latitude, longitude
+      );
+      const timeDeltaMs = now - lastPosRef.current.time;
+      const timeDeltaHrs = timeDeltaMs / 3600000;
+
+      if (timeDeltaMs >= 1000 && d < 0.3 && (accuracy == null || accuracy < 30)) {
+        segmentKm = d;
+        const rawSpeed = timeDeltaHrs > 0 ? d / timeDeltaHrs : 0;
+        const capped = Math.min(rawSpeed, 220);
+        speedSmoothRef.current = speedSmoothRef.current * 0.5 + capped * 0.5;
+        speedKmh = speedSmoothRef.current;
+      }
+    }
+    lastPosRef.current = { latitude, longitude, time: now };
+
+    coordsRef.current = [...coordsRef.current, { latitude, longitude }];
+    setCoords([...coordsRef.current]);
+
+    setSt((s) => {
+      const elapsed = getActiveElapsed();
+      const distKm = s.dist + segmentKm;
+      const avg = elapsed > 10 ? distKm / (elapsed / 3600) : 0;
+      const maxSpeed = Math.max(s.maxSpeed, speedKmh);
+      liveTracking.update(speedKmh, distKm, maxSpeed);
+      return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed };
+    });
+
+    if (mapRef.current) {
+      mapRef.current.animateToRegion(
+        { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500
+      );
+    }
+  };
+
+  const startGpsWatch = () => {
     watchIdRef.current = Geolocation.watchPosition(
-      (pos) => {
-        const { latitude, longitude, accuracy } = pos.coords;
-        const now = Date.now();
-
-        let segmentKm = 0;
-        let speedKmh = speedSmoothRef.current;
-
-        if (lastPosRef.current) {
-          const d = haversineKm(
-            lastPosRef.current.latitude, lastPosRef.current.longitude,
-            latitude, longitude
-          );
-          const timeDeltaMs = now - lastPosRef.current.time;
-          const timeDeltaHrs = timeDeltaMs / 3600000;
-
-          // Require ≥1s between fixes, movement < 300m, GPS accuracy < 30m
-          if (timeDeltaMs >= 1000 && d < 0.3 && (accuracy == null || accuracy < 30)) {
-            segmentKm = d;
-            const rawSpeed = timeDeltaHrs > 0 ? d / timeDeltaHrs : 0;
-            const capped = Math.min(rawSpeed, 220); // motorcycle hard cap
-            // EMA smoothing: decays naturally to 0 when stationary
-            speedSmoothRef.current = speedSmoothRef.current * 0.5 + capped * 0.5;
-            speedKmh = speedSmoothRef.current;
-          }
-        }
-        lastPosRef.current = { latitude, longitude, time: now };
-
-        coordsRef.current = [...coordsRef.current, { latitude, longitude }];
-        setCoords([...coordsRef.current]);
-
-        setSt((s) => {
-          const elapsed = Math.floor((Date.now() - startTimeRef.current) / 1000);
-          const distKm = s.dist + segmentKm;
-          const avg = elapsed > 10 ? distKm / (elapsed / 3600) : 0;
-          const maxSpeed = Math.max(s.maxSpeed, speedKmh);
-          liveTracking.update(speedKmh, distKm, maxSpeed);
-          return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed };
-        });
-
-        if (mapRef.current) {
-          mapRef.current.animateToRegion(
-            { latitude, longitude, latitudeDelta: 0.005, longitudeDelta: 0.005 }, 500
-          );
-        }
-      },
+      buildGpsCallback(),
       () => {},
       {
         enableHighAccuracy: true,
@@ -268,18 +275,65 @@ export default function TrackScreen({ units = 'km' }) {
         showsBackgroundLocationIndicator: true,
       }
     );
+  };
 
+  const startRecording = () => {
+    haptic('impactMedium');
+    startTimeRef.current = Date.now();
+    pausedDurationRef.current = 0;
+    pauseStartRef.current = null;
+    coordsRef.current = [];
+    lastPosRef.current = null;
+    speedSmoothRef.current = 0;
+    setCoords([]);
+    crashCooldownRef.current = false;
+    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+    KeepAwake.activate();
+    liveTracking.start('Ride', km, startTimeRef.current);
+
+    timerRef.current = setInterval(() => {
+      setSt(s => ({ ...s, elapsed: getActiveElapsed() }));
+    }, 1000);
+
+    startGpsWatch();
     startAccelerometer();
     setRecording(true);
+    setPaused(false);
+  };
+
+  const pauseRecording = () => {
+    haptic('impactLight');
+    pauseStartRef.current = Date.now();
+    Geolocation.clearWatch(watchIdRef.current);
+    watchIdRef.current = null;
+    lastPosRef.current = null;
+    speedSmoothRef.current = 0;
+    stopAccelerometer();
+    setSt(s => ({ ...s, speed: 0 }));
+    setPaused(true);
+  };
+
+  const resumeRecording = () => {
+    haptic('impactLight');
+    if (pauseStartRef.current) {
+      pausedDurationRef.current += Date.now() - pauseStartRef.current;
+      pauseStartRef.current = null;
+    }
+    setPaused(false);
+    startGpsWatch();
+    startAccelerometer();
   };
 
   const stopRecording = async () => {
     haptic('notificationSuccess');
     clearInterval(timerRef.current);
-    Geolocation.clearWatch(watchIdRef.current);
+    if (watchIdRef.current != null) {
+      Geolocation.clearWatch(watchIdRef.current);
+    }
     stopAccelerometer();
     KeepAwake.deactivate();
     setRecording(false);
+    setPaused(false);
     const s = stRef.current;
     liveTracking.end(s.speed, s.dist, s.maxSpeed);
     if (s.elapsed > 10) {
@@ -293,7 +347,6 @@ export default function TrackScreen({ units = 'km' }) {
         maxLean: s.maxLean,
         coords: coordsRef.current,
       });
-      // Sync odometer to active bike
       const bikes = await storage.getBikes();
       const activeIdx = bikes.findIndex(b => b.active);
       if (activeIdx >= 0) {
@@ -309,7 +362,11 @@ export default function TrackScreen({ units = 'km' }) {
     setLeanAngle(0);
   };
 
-  const toggle = () => recording ? stopRecording() : startRecording();
+  const handleMainButton = () => {
+    if (!recording) return startRecording();
+    if (paused) return resumeRecording();
+    return pauseRecording();
+  };
 
   const disp = (kmhVal) => km ? Math.round(kmhVal) : Math.round(kmhVal / 1.60934);
   const distDisp = (kmVal) => km ? kmVal.toFixed(2) : (kmVal / 1.60934).toFixed(2);
@@ -326,7 +383,7 @@ export default function TrackScreen({ units = 'km' }) {
           initialRegion={region}
           showsUserLocation
           showsMyLocationButton={false}
-          followsUserLocation={recording}
+          followsUserLocation={recording && !paused}
           mapType="standard"
           userInterfaceStyle="dark"
           showsCompass={false}
@@ -344,10 +401,10 @@ export default function TrackScreen({ units = 'km' }) {
 
       <View style={[styles.topHud, { top: insets.top + 12 }]}>
         <View style={styles.gpsPill}>
-          <View style={[styles.gpsDot, { backgroundColor: recording ? '#34C759' : AX.faint }]} />
+          <View style={[styles.gpsDot, { backgroundColor: recording && !paused ? '#34C759' : AX.faint }]} />
           <Text style={styles.gpsText}>GPS</Text>
         </View>
-        <RecPill recording={recording} />
+        <RecPill recording={recording} paused={paused} />
       </View>
 
       <View style={[styles.console, { paddingBottom: insets.bottom + 16 }]}>
@@ -359,7 +416,14 @@ export default function TrackScreen({ units = 'km' }) {
               <Text style={styles.heroLabel}>Speed</Text>
             </View>
           </View>
-          <RecordButton recording={recording} onPress={toggle} />
+          <View style={styles.btnColumn}>
+            {recording && (
+              <TouchableOpacity onPress={stopRecording} style={styles.endBtn}>
+                <Text style={styles.endBtnText}>END RIDE</Text>
+              </TouchableOpacity>
+            )}
+            <MainButton recording={recording} paused={paused} onPress={handleMainButton} />
+          </View>
         </View>
 
         <View style={styles.divider} />
@@ -423,6 +487,14 @@ const styles = StyleSheet.create({
   heroUnit: { fontFamily: FONTS.sairaBold, fontSize: 17, letterSpacing: 1, textTransform: 'uppercase', color: AX.dim },
   heroLabel: { fontFamily: FONTS.sairaBold, fontSize: 12, letterSpacing: 1.6, textTransform: 'uppercase', color: AX.faint },
 
+  btnColumn: { alignItems: 'center', gap: 10 },
+  endBtn: {
+    paddingHorizontal: 18, paddingVertical: 7,
+    borderRadius: 20, borderWidth: 1, borderColor: AX.border,
+    backgroundColor: 'rgba(12,13,16,0.6)',
+  },
+  endBtnText: { fontFamily: FONTS.sairaBold, fontSize: 11, letterSpacing: 1.2, color: AX.dim, textTransform: 'uppercase' },
+
   divider: { height: 1, backgroundColor: AX.border, marginVertical: 18 },
 
   metricsRow: { flexDirection: 'row', justifyContent: 'space-between' },
@@ -447,11 +519,11 @@ const styles = StyleSheet.create({
     borderTopWidth: 13, borderBottomWidth: 13, borderLeftWidth: 22,
     borderTopColor: 'transparent', borderBottomColor: 'transparent', borderLeftColor: '#0C0D10',
   },
-  stopIcon: { width: 26, height: 26, borderRadius: 6, backgroundColor: AX.orange },
+  pauseIcon: { flexDirection: 'row', gap: 7, alignItems: 'center' },
+  pauseBar: { width: 5, height: 22, borderRadius: 3, backgroundColor: AX.orange },
 
   startHint: { fontFamily: FONTS.saira, fontSize: 13, color: AX.dim, textAlign: 'center', marginTop: 12 },
 
-  // Crash modal
   crashOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
     alignItems: 'center', justifyContent: 'center', padding: 24,
