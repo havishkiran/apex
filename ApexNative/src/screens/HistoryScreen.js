@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
   TextInput, KeyboardAvoidingView, Platform,
 } from 'react-native';
-import MapView, { Polyline, PROVIDER_DEFAULT } from 'react-native-maps';
+import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AX, FONTS } from '../tokens';
 import { Glyph } from '../components/Glyph';
@@ -41,6 +42,43 @@ function StatCard({ label, value, unit }) {
       <Text style={styles.statCardLabel}>{label}</Text>
       <Text style={styles.statCardValue}>{value}</Text>
       {unit ? <Text style={styles.statCardUnit}>{unit}</Text> : null}
+    </View>
+  );
+}
+
+function AltGraph({ coords, width = 320, height = 72 }) {
+  if (!coords || coords.length < 2) return null;
+  const alts = coords.map(c => c.altitude).filter(a => a != null);
+  if (alts.length < 2) return null;
+
+  const min = Math.min(...alts);
+  const max = Math.max(...alts);
+  const range = max - min || 1;
+  const pad = { x: 4, y: 6 };
+  const w = width - pad.x * 2;
+  const h = height - pad.y * 2;
+
+  const pts = alts.map((a, i) => ({
+    x: pad.x + (i / (alts.length - 1)) * w,
+    y: pad.y + (1 - (a - min) / range) * h,
+  }));
+
+  const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
+  const fillD = `${pathD} L${pts[pts.length - 1].x.toFixed(1)},${(pad.y + h).toFixed(1)} L${pts[0].x.toFixed(1)},${(pad.y + h).toFixed(1)} Z`;
+
+  return (
+    <View style={{ marginTop: 4, marginBottom: 8 }}>
+      <Text style={styles.sectionLabel}>Elevation Profile</Text>
+      <Svg width={width} height={height} style={{ alignSelf: 'center' }}>
+        <Defs>
+          <LinearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={AX.orange} stopOpacity="0.35" />
+            <Stop offset="1" stopColor={AX.orange} stopOpacity="0.02" />
+          </LinearGradient>
+        </Defs>
+        <Path d={fillD} fill="url(#altGrad)" />
+        <Path d={pathD} stroke={AX.orange} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+      </Svg>
     </View>
   );
 }
@@ -147,6 +185,11 @@ function RideDetail({ ride, units, onClose, onRename }) {
               <Polyline coordinates={ride.coords} strokeColor={AX.orange}
                 strokeWidth={4} lineCap="round" lineJoin="round" />
             )}
+            {ride.hazards?.map((h, i) => (
+              <Marker key={i} coordinate={h} anchor={{ x: 0.5, y: 0.5 }}>
+                <Text style={{ fontSize: 20 }}>⚠️</Text>
+              </Marker>
+            ))}
           </MapView>
         ) : (
           <View style={[StyleSheet.absoluteFill, styles.noMap]}>
@@ -178,6 +221,7 @@ function RideDetail({ ride, units, onClose, onRename }) {
             <StatCard label="Elevation" value={fmtAlt(altGain)} unit="gain" />
           </View>
         )}
+        {hasAlt && <AltGraph coords={ride.coords} width={340} height={80} />}
       </ScrollView>
     </View>
   );

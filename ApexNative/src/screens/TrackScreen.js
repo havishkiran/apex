@@ -11,6 +11,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import { AX, FONTS } from '../tokens';
 import { saveRide, storage } from '../native/storage';
 import { liveTracking } from '../native/liveTracking';
+import RoutePlannerModal from './RoutePlannerModal';
 
 const HAPTIC = { enableVibrateFallback: true, ignoreAndroidSystemSettings: false };
 function haptic(type = 'impactMedium') {
@@ -155,6 +156,9 @@ export default function TrackScreen({ units = 'km' }) {
   const [hazards, setHazards] = useState([]);
   const hazardsRef = useRef([]);
 
+  const [showPlanner, setShowPlanner] = useState(false);
+  const [plannedRoute, setPlannedRoute] = useState(null);
+
   const [leanAngle, setLeanAngle] = useState(0);
   const leanRef = useRef(0);
   const accelSubRef = useRef(null);
@@ -241,7 +245,7 @@ export default function TrackScreen({ units = 'km' }) {
     }
     lastPosRef.current = { latitude, longitude, time: now };
 
-    coordsRef.current = [...coordsRef.current, { latitude, longitude }];
+    coordsRef.current = [...coordsRef.current, { latitude, longitude, altitude: altitude ?? undefined }];
     setCoords([...coordsRef.current]);
 
     setSt((s) => {
@@ -340,9 +344,13 @@ export default function TrackScreen({ units = 'km' }) {
     const s = stRef.current;
     liveTracking.end(s.speed, s.dist, s.maxSpeed);
     if (s.elapsed > 10) {
+      const bikes = await storage.getBikes();
+      const activeIdx = bikes.findIndex(b => b.active);
+      const activeBikeId = activeIdx >= 0 ? bikes[activeIdx].id : null;
       await saveRide({
         id: Date.now(),
         date: new Date().toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' }),
+        bikeId: activeBikeId,
         distKm: s.dist,
         elapsed: s.elapsed,
         avgKmh: s.avg,
@@ -353,8 +361,6 @@ export default function TrackScreen({ units = 'km' }) {
         hazards: hazardsRef.current,
         coords: coordsRef.current,
       });
-      const bikes = await storage.getBikes();
-      const activeIdx = bikes.findIndex(b => b.active);
       if (activeIdx >= 0) {
         const updated = [...bikes];
         updated[activeIdx] = {
@@ -491,12 +497,40 @@ export default function TrackScreen({ units = 'km' }) {
         <Text style={[styles.startHint, { opacity: recording ? 0 : 0.5 }]}>
           Tap to start recording
         </Text>
+        {!recording && (
+          <TouchableOpacity onPress={() => setShowPlanner(true)} style={styles.planBtn}>
+            <Text style={styles.planBtnText}>Plan Route</Text>
+          </TouchableOpacity>
+        )}
+        {!recording && plannedRoute && (
+          <View style={styles.routeBadge}>
+            <Text style={styles.routeBadgeText}>
+              Route set · {units === 'km'
+                ? `${plannedRoute.distKm.toFixed(1)} km`
+                : `${(plannedRoute.distKm / 1.60934).toFixed(1)} mi`
+              } · {plannedRoute.waypoints.length} waypoints
+            </Text>
+            <TouchableOpacity onPress={() => setPlannedRoute(null)}>
+              <Text style={styles.routeBadgeClear}>✕</Text>
+            </TouchableOpacity>
+          </View>
+        )}
       </View>
 
       <CrashModal
         visible={crashVisible}
         emergency={emergency}
         onDismiss={() => { setCrashVisible(false); crashCooldownRef.current = false; }}
+      />
+
+      <RoutePlannerModal
+        visible={showPlanner}
+        units={units}
+        onClose={() => setShowPlanner(false)}
+        onStartWithRoute={(route) => {
+          setPlannedRoute(route);
+          if (route) setShowPlanner(false);
+        }}
       />
     </View>
   );
@@ -593,6 +627,22 @@ const styles = StyleSheet.create({
   pauseBar: { width: 5, height: 22, borderRadius: 3, backgroundColor: AX.orange },
 
   startHint: { fontFamily: FONTS.saira, fontSize: 13, color: AX.dim, textAlign: 'center', marginTop: 12 },
+
+  planBtn: {
+    marginTop: 10, height: 38, borderRadius: 12,
+    borderWidth: 1, borderColor: AX.border, alignSelf: 'center',
+    paddingHorizontal: 20, alignItems: 'center', justifyContent: 'center',
+  },
+  planBtnText: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.dim, letterSpacing: 0.5 },
+
+  routeBadge: {
+    marginTop: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between',
+    backgroundColor: 'rgba(255,107,26,0.08)', borderRadius: 10,
+    borderWidth: 1, borderColor: 'rgba(255,107,26,0.25)',
+    paddingHorizontal: 12, paddingVertical: 8,
+  },
+  routeBadgeText: { fontFamily: FONTS.saira, fontSize: 12, color: AX.orange, flex: 1 },
+  routeBadgeClear: { fontSize: 14, color: AX.faint, paddingLeft: 8 },
 
   crashOverlay: {
     flex: 1, backgroundColor: 'rgba(0,0,0,0.85)',
