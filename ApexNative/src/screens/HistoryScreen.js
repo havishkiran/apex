@@ -95,6 +95,10 @@ function RideDetail({ ride, units, onClose, onRename }) {
   const su = km ? 'km/h' : 'mph';
   const du = km ? 'km' : 'mi';
 
+  const hasAlt = ride.maxAltM != null && ride.minAltM != null;
+  const fmtAlt = (m) => km ? `${Math.round(m)}m` : `${Math.round(m * 3.28084)}ft`;
+  const altGain = hasAlt ? Math.max(0, ride.maxAltM - ride.minAltM) : null;
+
   const openRename = () => { setNameText(ride.route || ''); setRenaming(true); };
   const saveRename = () => {
     const name = nameText.trim();
@@ -161,9 +165,17 @@ function RideDetail({ ride, units, onClose, onRename }) {
           <StatCard label="Top Speed" value={top} unit={su} />
           <StatCard label="Avg Speed" value={avg} unit={su} />
         </View>
-        {ride.maxLean > 0 && (
+        {(ride.maxLean > 0 || (ride.hazards?.length > 0)) && (
           <View style={styles.detailStatsRow}>
-            <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />
+            {ride.maxLean > 0 && <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />}
+            {ride.hazards?.length > 0 && <StatCard label="Hazards" value={String(ride.hazards.length)} unit="pins" />}
+          </View>
+        )}
+        {hasAlt && (
+          <View style={styles.detailStatsRow}>
+            <StatCard label="Max Altitude" value={fmtAlt(ride.maxAltM)} />
+            <StatCard label="Min Altitude" value={fmtAlt(ride.minAltM)} />
+            <StatCard label="Elevation" value={fmtAlt(altGain)} unit="gain" />
           </View>
         )}
       </ScrollView>
