@@ -11,6 +11,7 @@ import ReactNativeHapticFeedback from 'react-native-haptic-feedback';
 import { AX, FONTS } from '../tokens';
 import { saveRide, storage } from '../native/storage';
 import { liveTracking } from '../native/liveTracking';
+import { fetchWeather } from '../native/weather';
 import RoutePlannerModal from './RoutePlannerModal';
 
 const HAPTIC = { enableVibrateFallback: true, ignoreAndroidSystemSettings: false };
@@ -158,6 +159,8 @@ export default function TrackScreen({ units = 'km' }) {
 
   const [showPlanner, setShowPlanner] = useState(false);
   const [plannedRoute, setPlannedRoute] = useState(null);
+  const [weather, setWeather] = useState(null);
+  const weatherRef = useRef(null);
 
   const [leanAngle, setLeanAngle] = useState(0);
   const leanRef = useRef(0);
@@ -245,7 +248,11 @@ export default function TrackScreen({ units = 'km' }) {
     }
     lastPosRef.current = { latitude, longitude, time: now };
 
-    coordsRef.current = [...coordsRef.current, { latitude, longitude, altitude: altitude ?? undefined }];
+    coordsRef.current = [...coordsRef.current, {
+      latitude, longitude,
+      altitude: altitude ?? undefined,
+      lean: Math.abs(Math.round(leanRef.current)),
+    }];
     setCoords([...coordsRef.current]);
 
     setSt((s) => {
@@ -294,8 +301,21 @@ export default function TrackScreen({ units = 'km' }) {
     setCoords([]);
     setHazards([]);
     crashCooldownRef.current = false;
+    weatherRef.current = null;
+    setWeather(null);
     setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0, altitude: 0, maxAlt: 0, minAlt: null });
     KeepAwake.activate();
+
+    // Snapshot weather at ride start (best-effort, non-blocking)
+    Geolocation.getCurrentPosition(
+      (pos) => {
+        fetchWeather(pos.coords.latitude, pos.coords.longitude).then((w) => {
+          if (w) { weatherRef.current = w; setWeather(w); }
+        });
+      },
+      () => {},
+      { enableHighAccuracy: false, timeout: 8000 }
+    );
     liveTracking.start('Ride', km, startTimeRef.current);
 
     timerRef.current = setInterval(() => {
@@ -358,6 +378,7 @@ export default function TrackScreen({ units = 'km' }) {
         maxLean: s.maxLean,
         maxAltM: s.maxAlt,
         minAltM: s.minAlt,
+        weather: weatherRef.current,
         hazards: hazardsRef.current,
         coords: coordsRef.current,
       });
@@ -445,13 +466,21 @@ export default function TrackScreen({ units = 'km' }) {
           <Text style={styles.gpsText}>GPS</Text>
         </View>
 
-        {/* Fuel finder — only while recording */}
-        {recording && (
-          <TouchableOpacity onPress={openFuelFinder} style={styles.fuelBtn}>
-            <Text style={styles.fuelEmoji}>⛽</Text>
-            <Text style={styles.fuelBtnText}>Fuel</Text>
-          </TouchableOpacity>
-        )}
+        {/* Weather + Fuel finder — only while recording */}
+        <View style={styles.hudCenter}>
+          {recording && weather && (
+            <View style={styles.weatherPill}>
+              <Text style={styles.weatherEmoji}>{weather.icon}</Text>
+              <Text style={styles.weatherText}>{weather.tempC}°</Text>
+            </View>
+          )}
+          {recording && (
+            <TouchableOpacity onPress={openFuelFinder} style={styles.fuelBtn}>
+              <Text style={styles.fuelEmoji}>⛽</Text>
+              <Text style={styles.fuelBtnText}>Fuel</Text>
+            </TouchableOpacity>
+          )}
+        </View>
 
         <RecPill recording={recording} paused={paused} />
       </View>
@@ -551,12 +580,20 @@ const styles = StyleSheet.create({
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, letterSpacing: 0.7, color: AX.dim, textTransform: 'uppercase' },
 
+  hudCenter: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   fuelBtn: {
     flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 13,
     borderRadius: 17, backgroundColor: 'rgba(12,13,16,0.72)', borderWidth: 1, borderColor: AX.border,
   },
   fuelEmoji: { fontSize: 14 },
   fuelBtnText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, color: AX.dim },
+
+  weatherPill: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 12,
+    borderRadius: 17, backgroundColor: 'rgba(12,13,16,0.72)', borderWidth: 1, borderColor: AX.border,
+  },
+  weatherEmoji: { fontSize: 14 },
+  weatherText: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.text },
 
   hazardHint: {
     position: 'absolute', left: 0, right: 0, alignItems: 'center',

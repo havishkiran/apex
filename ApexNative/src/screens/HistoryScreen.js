@@ -1,9 +1,10 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   View, Text, StyleSheet, ScrollView, TouchableOpacity, Modal, Alert,
-  TextInput, KeyboardAvoidingView, Platform,
+  TextInput, KeyboardAvoidingView, Platform, Share,
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
+import ViewShot from 'react-native-view-shot';
 import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from 'react-native-maps';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AX, FONTS } from '../tokens';
@@ -46,21 +47,19 @@ function StatCard({ label, value, unit }) {
   );
 }
 
-function AltGraph({ coords, width = 320, height = 72 }) {
-  if (!coords || coords.length < 2) return null;
-  const alts = coords.map(c => c.altitude).filter(a => a != null);
-  if (alts.length < 2) return null;
+function MetricGraph({ values, label, gradId, color = AX.orange, width = 340, height = 80 }) {
+  if (!values || values.length < 2) return null;
 
-  const min = Math.min(...alts);
-  const max = Math.max(...alts);
+  const min = Math.min(...values);
+  const max = Math.max(...values);
   const range = max - min || 1;
   const pad = { x: 4, y: 6 };
   const w = width - pad.x * 2;
   const h = height - pad.y * 2;
 
-  const pts = alts.map((a, i) => ({
-    x: pad.x + (i / (alts.length - 1)) * w,
-    y: pad.y + (1 - (a - min) / range) * h,
+  const pts = values.map((v, i) => ({
+    x: pad.x + (i / (values.length - 1)) * w,
+    y: pad.y + (1 - (v - min) / range) * h,
   }));
 
   const pathD = pts.map((p, i) => `${i === 0 ? 'M' : 'L'}${p.x.toFixed(1)},${p.y.toFixed(1)}`).join(' ');
@@ -68,16 +67,16 @@ function AltGraph({ coords, width = 320, height = 72 }) {
 
   return (
     <View style={{ marginTop: 4, marginBottom: 8 }}>
-      <Text style={styles.sectionLabel}>Elevation Profile</Text>
+      <Text style={styles.sectionLabel}>{label}</Text>
       <Svg width={width} height={height} style={{ alignSelf: 'center' }}>
         <Defs>
-          <LinearGradient id="altGrad" x1="0" y1="0" x2="0" y2="1">
-            <Stop offset="0" stopColor={AX.orange} stopOpacity="0.35" />
-            <Stop offset="1" stopColor={AX.orange} stopOpacity="0.02" />
+          <LinearGradient id={gradId} x1="0" y1="0" x2="0" y2="1">
+            <Stop offset="0" stopColor={color} stopOpacity="0.35" />
+            <Stop offset="1" stopColor={color} stopOpacity="0.02" />
           </LinearGradient>
         </Defs>
-        <Path d={fillD} fill="url(#altGrad)" />
-        <Path d={pathD} stroke={AX.orange} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
+        <Path d={fillD} fill={`url(#${gradId})`} />
+        <Path d={pathD} stroke={color} strokeWidth="2" fill="none" strokeLinecap="round" strokeLinejoin="round" />
       </Svg>
     </View>
   );
@@ -137,6 +136,9 @@ function RideDetail({ ride, units, onClose, onRename }) {
   const fmtAlt = (m) => km ? `${Math.round(m)}m` : `${Math.round(m * 3.28084)}ft`;
   const altGain = hasAlt ? Math.max(0, ride.maxAltM - ride.minAltM) : null;
 
+  const altValues = (ride.coords || []).map(c => c.altitude).filter(a => a != null);
+  const leanValues = (ride.coords || []).map(c => c.lean).filter(l => l != null && l > 0);
+
   const openRename = () => { setNameText(ride.route || ''); setRenaming(true); };
   const saveRename = () => {
     const name = nameText.trim();
@@ -144,8 +146,59 @@ function RideDetail({ ride, units, onClose, onRename }) {
     setRenaming(false);
   };
 
+  const shotRef = useRef(null);
+  const [sharing, setSharing] = useState(false);
+
+  const shareRide = async () => {
+    try {
+      setSharing(true);
+      // Let the off-screen card render before capturing
+      await new Promise(r => setTimeout(r, 60));
+      const uri = await shotRef.current.capture();
+      await Share.share({
+        url: uri,
+        message: `${ride.route || 'My ride'} — ${dist} ${du} · ${fmtDur(ride.elapsed)} · top ${top} ${su}. Tracked with Apex 🏍`,
+      });
+    } catch (e) {
+      Alert.alert('Share failed', 'Could not create the ride card. Try again.');
+    } finally {
+      setSharing(false);
+    }
+  };
+
   return (
     <View style={[styles.detailContainer, { paddingTop: insets.top }]}>
+      {/* Off-screen shareable card */}
+      <ViewShot ref={shotRef} options={{ format: 'png', quality: 1, result: 'tmpfile' }}
+        style={styles.shareCardWrap}>
+        <View style={styles.shareCard}>
+          <View style={styles.shareCardHeader}>
+            <Text style={styles.shareCardBrand}>APEX</Text>
+            {ride.weather && (
+              <Text style={styles.shareCardWeather}>{ride.weather.icon} {ride.weather.tempC}°</Text>
+            )}
+          </View>
+          <Text style={styles.shareCardTitle}>{ride.route || 'Untitled Ride'}</Text>
+          <Text style={styles.shareCardDate}>{ride.date}</Text>
+          <View style={styles.shareCardStatsRow}>
+            <View style={styles.shareCardStat}>
+              <Text style={styles.shareCardValue}>{dist}</Text>
+              <Text style={styles.shareCardLabel}>{du}</Text>
+            </View>
+            <View style={styles.shareCardStat}>
+              <Text style={styles.shareCardValue}>{fmtDur(ride.elapsed)}</Text>
+              <Text style={styles.shareCardLabel}>time</Text>
+            </View>
+            <View style={styles.shareCardStat}>
+              <Text style={styles.shareCardValue}>{top}</Text>
+              <Text style={styles.shareCardLabel}>{su}</Text>
+            </View>
+          </View>
+          {ride.maxLean > 0 && (
+            <Text style={styles.shareCardLean}>Max lean {Math.round(ride.maxLean)}°</Text>
+          )}
+        </View>
+      </ViewShot>
       <Modal visible={renaming} transparent animationType="fade" statusBarTranslucent>
         <KeyboardAvoidingView style={styles.renameOverlay} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
           <View style={styles.renameCard}>
@@ -172,6 +225,9 @@ function RideDetail({ ride, units, onClose, onRename }) {
         <TouchableOpacity style={{ flex: 1 }} onPress={openRename} activeOpacity={0.7}>
           <Text style={styles.detailTitle}>{ride.route || 'Untitled Ride'}</Text>
           <Text style={styles.detailDate}>{ride.date} · tap to rename</Text>
+        </TouchableOpacity>
+        <TouchableOpacity onPress={shareRide} disabled={sharing} style={[styles.backBtn, sharing && { opacity: 0.4 }]}>
+          <Glyph name="share" size={18} color={AX.text} sw={2} />
         </TouchableOpacity>
       </View>
 
@@ -208,6 +264,18 @@ function RideDetail({ ride, units, onClose, onRename }) {
           <StatCard label="Top Speed" value={top} unit={su} />
           <StatCard label="Avg Speed" value={avg} unit={su} />
         </View>
+        {ride.weather && (
+          <View style={styles.weatherBar}>
+            <Text style={styles.weatherBarIcon}>{ride.weather.icon}</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={styles.weatherBarTemp}>
+                {km ? `${ride.weather.tempC}°C` : `${Math.round(ride.weather.tempC * 9 / 5 + 32)}°F`}
+                {'  ·  '}{ride.weather.label}
+              </Text>
+              <Text style={styles.weatherBarWind}>Wind {ride.weather.windKmh} km/h at start</Text>
+            </View>
+          </View>
+        )}
         {(ride.maxLean > 0 || (ride.hazards?.length > 0)) && (
           <View style={styles.detailStatsRow}>
             {ride.maxLean > 0 && <StatCard label="Max Lean" value={`${Math.round(ride.maxLean)}°`} />}
@@ -221,7 +289,12 @@ function RideDetail({ ride, units, onClose, onRename }) {
             <StatCard label="Elevation" value={fmtAlt(altGain)} unit="gain" />
           </View>
         )}
-        {hasAlt && <AltGraph coords={ride.coords} width={340} height={80} />}
+        {altValues.length >= 2 && (
+          <MetricGraph values={altValues} label="Elevation Profile" gradId="altGrad" width={340} height={80} />
+        )}
+        {leanValues.length >= 2 && (
+          <MetricGraph values={leanValues} label="Lean Angle" gradId="leanGrad" color="#4A9EFF" width={340} height={80} />
+        )}
       </ScrollView>
     </View>
   );
@@ -757,4 +830,38 @@ const styles = StyleSheet.create({
   noMapText: { fontFamily: FONTS.saira, fontSize: 13, color: AX.ghost },
   detailStats: { padding: 16, gap: 10 },
   detailStatsRow: { flexDirection: 'row', gap: 10 },
+
+  weatherBar: {
+    flexDirection: 'row', alignItems: 'center', gap: 12,
+    backgroundColor: AX.surface, borderRadius: 16, padding: 14,
+    borderWidth: 1, borderColor: AX.border2,
+  },
+  weatherBarIcon: { fontSize: 30 },
+  weatherBarTemp: { fontFamily: FONTS.sairaBold, fontSize: 15, color: AX.text },
+  weatherBarWind: { fontFamily: FONTS.saira, fontSize: 12, color: AX.faint, marginTop: 2 },
+
+  // Off-screen share card — positioned far off-screen so it renders but isn't seen
+  shareCardWrap: { position: 'absolute', left: -9999, top: 0 },
+  shareCard: {
+    width: 380, backgroundColor: '#0E1014', padding: 28,
+    borderWidth: 1, borderColor: AX.border,
+  },
+  shareCardHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  shareCardBrand: {
+    fontFamily: FONTS.cond, fontSize: 26, color: AX.orange, letterSpacing: 2,
+  },
+  shareCardWeather: { fontFamily: FONTS.sairaBold, fontSize: 16, color: AX.text },
+  shareCardTitle: { fontFamily: FONTS.cond, fontSize: 34, color: AX.text, marginTop: 18, letterSpacing: -0.5 },
+  shareCardDate: { fontFamily: FONTS.saira, fontSize: 14, color: AX.faint, marginTop: 2 },
+  shareCardStatsRow: {
+    flexDirection: 'row', justifyContent: 'space-between', marginTop: 24,
+    borderTopWidth: 1, borderTopColor: AX.border, paddingTop: 20,
+  },
+  shareCardStat: { alignItems: 'flex-start' },
+  shareCardValue: { fontFamily: FONTS.cond, fontSize: 40, color: AX.text, letterSpacing: -1 },
+  shareCardLabel: {
+    fontFamily: FONTS.sairaBold, fontSize: 11, color: AX.faint,
+    letterSpacing: 1.4, textTransform: 'uppercase', marginTop: 2,
+  },
+  shareCardLean: { fontFamily: FONTS.sairaBold, fontSize: 14, color: AX.orange, marginTop: 18 },
 });
