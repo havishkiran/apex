@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import {
-  View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, Animated,
+  View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, Animated, Linking,
 } from 'react-native';
 import KeepAwake from 'react-native-keep-awake';
-import MapView, { PROVIDER_DEFAULT, Polyline } from 'react-native-maps';
+import MapView, { PROVIDER_DEFAULT, Polyline, Marker } from 'react-native-maps';
 import Geolocation from '@react-native-community/geolocation';
 import { accelerometer, setUpdateIntervalForType, SensorTypes } from 'react-native-sensors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -90,16 +90,11 @@ function MainButton({ recording, paused, onPress }) {
       <Animated.View style={{ transform: [{ scale }] }}>
         <View style={[styles.recBtn, isActive && styles.recBtnActive]}>
           {isActive ? (
-            // Pause icon: two vertical bars
             <View style={styles.pauseIcon}>
               <View style={styles.pauseBar} />
               <View style={styles.pauseBar} />
             </View>
-          ) : recording && paused ? (
-            // Resume: play icon in orange outline
-            <View style={styles.playIcon} />
           ) : (
-            // Start: play icon
             <View style={styles.playIcon} />
           )}
         </View>
@@ -148,7 +143,7 @@ export default function TrackScreen({ units = 'km' }) {
   const insets = useSafeAreaInsets();
   const [recording, setRecording] = useState(false);
   const [paused, setPaused] = useState(false);
-  const [st, setSt] = useState({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+  const [st, setSt] = useState({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0, altitude: 0, maxAlt: 0, minAlt: null });
   const stRef = useRef(st);
   stRef.current = st;
 
@@ -157,6 +152,8 @@ export default function TrackScreen({ units = 'km' }) {
   const [coords, setCoords] = useState([]);
   const coordsRef = useRef([]);
   const lastPosRef = useRef(null);
+  const [hazards, setHazards] = useState([]);
+  const hazardsRef = useRef([]);
 
   const [leanAngle, setLeanAngle] = useState(0);
   const leanRef = useRef(0);
@@ -167,8 +164,8 @@ export default function TrackScreen({ units = 'km' }) {
 
   const speedSmoothRef = useRef(0);
   const startTimeRef = useRef(null);
-  const pausedDurationRef = useRef(0);  // total ms spent paused
-  const pauseStartRef = useRef(null);   // timestamp when current pause began
+  const pausedDurationRef = useRef(0);
+  const pauseStartRef = useRef(null);
   const watchIdRef = useRef(null);
   const timerRef = useRef(null);
   const km = units === 'km';
@@ -219,7 +216,8 @@ export default function TrackScreen({ units = 'km' }) {
   };
 
   const buildGpsCallback = () => (pos) => {
-    const { latitude, longitude, accuracy } = pos.coords;
+    const { latitude, longitude, accuracy, altitude: rawAlt } = pos.coords;
+    const altitude = rawAlt != null ? Math.round(rawAlt) : null;
     const now = Date.now();
 
     let segmentKm = 0;
@@ -251,8 +249,11 @@ export default function TrackScreen({ units = 'km' }) {
       const distKm = s.dist + segmentKm;
       const avg = elapsed > 10 ? distKm / (elapsed / 3600) : 0;
       const maxSpeed = Math.max(s.maxSpeed, speedKmh);
+      const maxAlt = altitude != null ? Math.max(s.maxAlt, altitude) : s.maxAlt;
+      const minAlt = altitude != null ? (s.minAlt == null ? altitude : Math.min(s.minAlt, altitude)) : s.minAlt;
       liveTracking.update(speedKmh, distKm, maxSpeed);
-      return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed };
+      return { ...s, speed: speedKmh, dist: distKm, elapsed, avg, maxSpeed,
+        altitude: altitude ?? s.altitude, maxAlt, minAlt };
     });
 
     if (mapRef.current) {
@@ -283,11 +284,13 @@ export default function TrackScreen({ units = 'km' }) {
     pausedDurationRef.current = 0;
     pauseStartRef.current = null;
     coordsRef.current = [];
+    hazardsRef.current = [];
     lastPosRef.current = null;
     speedSmoothRef.current = 0;
     setCoords([]);
+    setHazards([]);
     crashCooldownRef.current = false;
-    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0, altitude: 0, maxAlt: 0, minAlt: null });
     KeepAwake.activate();
     liveTracking.start('Ride', km, startTimeRef.current);
 
@@ -345,6 +348,9 @@ export default function TrackScreen({ units = 'km' }) {
         avgKmh: s.avg,
         maxSpeedKmh: s.maxSpeed,
         maxLean: s.maxLean,
+        maxAltM: s.maxAlt,
+        minAltM: s.minAlt,
+        hazards: hazardsRef.current,
         coords: coordsRef.current,
       });
       const bikes = await storage.getBikes();
@@ -358,7 +364,7 @@ export default function TrackScreen({ units = 'km' }) {
         await storage.saveBikes(updated);
       }
     }
-    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0 });
+    setSt({ speed: 0, dist: 0, elapsed: 0, avg: 0, maxSpeed: 0, maxLean: 0, altitude: 0, maxAlt: 0, minAlt: null });
     setLeanAngle(0);
   };
 
@@ -368,10 +374,30 @@ export default function TrackScreen({ units = 'km' }) {
     return pauseRecording();
   };
 
+  // Drop a hazard pin where the user long-presses the map
+  const addHazard = (e) => {
+    if (!recording) return;
+    haptic('impactMedium');
+    const coord = e.nativeEvent.coordinate;
+    hazardsRef.current = [...hazardsRef.current, coord];
+    setHazards([...hazardsRef.current]);
+  };
+
+  // Open Apple Maps searching for fuel stations near current position
+  const openFuelFinder = () => {
+    const pos = lastPosRef.current;
+    if (pos) {
+      Linking.openURL(`maps://?q=petrol+station&ll=${pos.latitude},${pos.longitude}&z=14`);
+    } else {
+      Linking.openURL('maps://?q=petrol+station');
+    }
+  };
+
   const disp = (kmhVal) => km ? Math.round(kmhVal) : Math.round(kmhVal / 1.60934);
   const distDisp = (kmVal) => km ? kmVal.toFixed(2) : (kmVal / 1.60934).toFixed(2);
   const speedUnit = km ? 'km/h' : 'mph';
   const distUnit = km ? 'km' : 'mi';
+  const altDisp = km ? `${st.altitude}m` : `${Math.round(st.altitude * 3.28084)}ft`;
 
   return (
     <View style={styles.container}>
@@ -389,11 +415,19 @@ export default function TrackScreen({ units = 'km' }) {
           showsCompass={false}
           showsScale={false}
           showsTraffic={false}
+          onLongPress={addHazard}
         >
           {coords.length > 1 && (
             <Polyline coordinates={coords} strokeColor={AX.orange}
               strokeWidth={3} lineCap="round" lineJoin="round" />
           )}
+          {hazards.map((h, i) => (
+            <Marker key={i} coordinate={h} anchor={{ x: 0.5, y: 0.5 }}>
+              <View style={styles.hazardPin}>
+                <Text style={styles.hazardEmoji}>⚠️</Text>
+              </View>
+            </Marker>
+          ))}
         </MapView>
       )}
 
@@ -404,8 +438,24 @@ export default function TrackScreen({ units = 'km' }) {
           <View style={[styles.gpsDot, { backgroundColor: recording && !paused ? '#34C759' : AX.faint }]} />
           <Text style={styles.gpsText}>GPS</Text>
         </View>
+
+        {/* Fuel finder — only while recording */}
+        {recording && (
+          <TouchableOpacity onPress={openFuelFinder} style={styles.fuelBtn}>
+            <Text style={styles.fuelEmoji}>⛽</Text>
+            <Text style={styles.fuelBtnText}>Fuel</Text>
+          </TouchableOpacity>
+        )}
+
         <RecPill recording={recording} paused={paused} />
       </View>
+
+      {/* Hazard hint */}
+      {recording && (
+        <View style={[styles.hazardHint, { top: insets.top + 56 }]} pointerEvents="none">
+          <Text style={styles.hazardHintText}>Long press map to mark a hazard</Text>
+        </View>
+      )}
 
       <View style={[styles.console, { paddingBottom: insets.bottom + 16 }]}>
         <View style={styles.heroRow}>
@@ -435,6 +485,7 @@ export default function TrackScreen({ units = 'km' }) {
             ? <Metric label="Lean" value={`${leanAngle}°`} />
             : <Metric label="Avg" value={disp(st.avg)} unit={speedUnit} />
           }
+          <Metric label="Alt" value={altDisp} />
         </View>
 
         <Text style={[styles.startHint, { opacity: recording ? 0 : 0.5 }]}>
@@ -465,6 +516,25 @@ const styles = StyleSheet.create({
   },
   gpsDot: { width: 7, height: 7, borderRadius: 4 },
   gpsText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, letterSpacing: 0.7, color: AX.dim, textTransform: 'uppercase' },
+
+  fuelBtn: {
+    flexDirection: 'row', alignItems: 'center', gap: 5, height: 34, paddingHorizontal: 13,
+    borderRadius: 17, backgroundColor: 'rgba(12,13,16,0.72)', borderWidth: 1, borderColor: AX.border,
+  },
+  fuelEmoji: { fontSize: 14 },
+  fuelBtnText: { fontFamily: FONTS.sairaBold, fontSize: 11.5, color: AX.dim },
+
+  hazardHint: {
+    position: 'absolute', left: 0, right: 0, alignItems: 'center',
+  },
+  hazardHintText: {
+    fontFamily: FONTS.saira, fontSize: 11, color: AX.faint,
+    backgroundColor: 'rgba(12,13,16,0.55)', paddingHorizontal: 10, paddingVertical: 3,
+    borderRadius: 10,
+  },
+
+  hazardPin: { alignItems: 'center', justifyContent: 'center' },
+  hazardEmoji: { fontSize: 22 },
 
   pill: {
     flexDirection: 'row', alignItems: 'center', gap: 7, height: 30, paddingHorizontal: 13,
@@ -499,10 +569,10 @@ const styles = StyleSheet.create({
 
   metricsRow: { flexDirection: 'row', justifyContent: 'space-between' },
   metric: { flex: 1, gap: 5 },
-  metricLabel: { fontFamily: FONTS.sairaBold, fontSize: 11, letterSpacing: 1.4, textTransform: 'uppercase', color: AX.faint },
-  metricRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 4 },
-  metricValue: { fontFamily: FONTS.cond, fontSize: 30, lineHeight: 34, color: AX.text },
-  metricUnit: { fontFamily: FONTS.sairaBold, fontSize: 12, color: AX.dim, textTransform: 'uppercase', marginBottom: 2 },
+  metricLabel: { fontFamily: FONTS.sairaBold, fontSize: 10, letterSpacing: 1.2, textTransform: 'uppercase', color: AX.faint },
+  metricRow: { flexDirection: 'row', alignItems: 'flex-end', gap: 3 },
+  metricValue: { fontFamily: FONTS.cond, fontSize: 26, lineHeight: 30, color: AX.text },
+  metricUnit: { fontFamily: FONTS.sairaBold, fontSize: 11, color: AX.dim, textTransform: 'uppercase', marginBottom: 2 },
 
   recBtn: {
     width: 78, height: 78, borderRadius: 39, backgroundColor: AX.orange,
