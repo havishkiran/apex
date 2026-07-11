@@ -5,7 +5,8 @@ import {
 } from 'react-native';
 import Svg, { Path, Defs, LinearGradient, Stop } from 'react-native-svg';
 import ViewShot from 'react-native-view-shot';
-import MapView, { Polyline, Marker, PROVIDER_DEFAULT } from 'react-native-maps';
+import MapView, { Polyline, Marker } from 'react-native-maps';
+import { MAP_PROVIDER, MAP_DARK_PROPS } from '../native/mapProvider';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AX, FONTS } from '../tokens';
 import { Glyph } from '../components/Glyph';
@@ -233,8 +234,8 @@ function RideDetail({ ride, units, onClose, onRename }) {
 
       <View style={styles.detailMap}>
         {region ? (
-          <MapView style={StyleSheet.absoluteFill} provider={PROVIDER_DEFAULT}
-            initialRegion={region} userInterfaceStyle="dark" mapType="standard"
+          <MapView style={StyleSheet.absoluteFill} provider={MAP_PROVIDER}
+            initialRegion={region} {...MAP_DARK_PROPS} mapType="standard"
             showsUserLocation={false} scrollEnabled={false} zoomEnabled={false}
             rotateEnabled={false} showsCompass={false}>
             {ride.coords?.length > 1 && (
@@ -490,8 +491,8 @@ function GroupDetail({ group, rides, units, onClose, onRename, onDelete }) {
       {/* Merged map — all routes overlaid */}
       <View style={styles.detailMap}>
         {region ? (
-          <MapView style={StyleSheet.absoluteFill} provider={PROVIDER_DEFAULT}
-            initialRegion={region} userInterfaceStyle="dark" mapType="standard"
+          <MapView style={StyleSheet.absoluteFill} provider={MAP_PROVIDER}
+            initialRegion={region} {...MAP_DARK_PROPS} mapType="standard"
             showsUserLocation={false} scrollEnabled={false} zoomEnabled={false}
             rotateEnabled={false} showsCompass={false}>
             {groupRides.map(r => r.coords?.length > 1 && (

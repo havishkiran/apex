@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Pressable, Modal, Animated, Linking,
 } from 'react-native';
 import KeepAwake from 'react-native-keep-awake';
-import MapView, { PROVIDER_DEFAULT, Polyline, Marker } from 'react-native-maps';
+import MapView, { Polyline, Marker } from 'react-native-maps';
+import { MAP_PROVIDER, MAP_DARK_PROPS } from '../native/mapProvider';
 import Geolocation from '@react-native-community/geolocation';
 import { accelerometer, setUpdateIntervalForType, SensorTypes } from 'react-native-sensors';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -432,13 +433,13 @@ export default function TrackScreen({ units = 'km' }) {
         <MapView
           ref={mapRef}
           style={StyleSheet.absoluteFill}
-          provider={PROVIDER_DEFAULT}
+          provider={MAP_PROVIDER}
           initialRegion={region}
           showsUserLocation
           showsMyLocationButton={false}
           followsUserLocation={recording && !paused}
           mapType="standard"
-          userInterfaceStyle="dark"
+          {...MAP_DARK_PROPS}
           showsCompass={false}
           showsScale={false}
           showsTraffic={false}

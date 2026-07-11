@@ -3,7 +3,8 @@ import {
   View, Text, StyleSheet, TouchableOpacity, Modal, ScrollView,
   Alert, Linking, Platform,
 } from 'react-native';
-import MapView, { PROVIDER_DEFAULT, Polyline, Marker } from 'react-native-maps';
+import MapView, { Polyline, Marker } from 'react-native-maps';
+import { MAP_PROVIDER, MAP_DARK_PROPS } from '../native/mapProvider';
 import Geolocation from '@react-native-community/geolocation';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AX, FONTS } from '../tokens';
@@ -133,9 +134,9 @@ export default function RoutePlannerModal({ visible, units, onClose, onStartWith
           <MapView
             ref={mapRef}
             style={StyleSheet.absoluteFill}
-            provider={PROVIDER_DEFAULT}
+            provider={MAP_PROVIDER}
             initialRegion={region}
-            userInterfaceStyle="dark"
+            {...MAP_DARK_PROPS}
             mapType="standard"
             showsUserLocation
             showsMyLocationButton={false}
